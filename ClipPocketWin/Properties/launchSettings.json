@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ClipPocketWin (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ClipPocketWin (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

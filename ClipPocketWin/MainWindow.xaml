@@ -1,0 +1,800 @@
+<Window
+    x:Class="ClipPocketWin.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ClipPocket">
+
+    <Window.SystemBackdrop>
+        <DesktopAcrylicBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid>
+
+        <!-- Subtle gradient overlay for depth -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#0D1B3E" Offset="0.0" />
+                <GradientStop Color="#0A1128" Offset="0.5" />
+                <GradientStop Color="#15275E" Offset="1.0" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <!-- Main content container -->
+        <Border Margin="0"
+                CornerRadius="0"
+                Background="Transparent">
+
+            <Grid Margin="20,16,20,16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />  <!-- Search bar row -->
+                    <RowDefinition Height="Auto" />  <!-- Filter chips + tabs row -->
+                    <RowDefinition Height="*" />      <!-- Cards row -->
+                </Grid.RowDefinitions>
+
+                <!-- ============================================================ -->
+                <!-- ROW 0 — SEARCH BAR                                           -->
+                <!-- ============================================================ -->
+                <Border Grid.Row="0"
+                        Background="#22FFFFFF"
+                        CornerRadius="12"
+                        BorderBrush="#33FFFFFF"
+                        BorderThickness="1"
+                        Padding="14,10"
+                        Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Grid.Column="0"
+                                  Glyph="&#xE721;"
+                                  FontFamily="Segoe Fluent Icons"
+                                  Foreground="#99FFFFFF"
+                                  FontSize="16"
+                                  Margin="0,0,10,0"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="Search clipboard..."
+                                   Foreground="#66FFFFFF"
+                                   FontSize="15"
+                                   FontFamily="Segoe UI Variable Display"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <!-- ============================================================ -->
+                <!-- ROW 1 — FILTER CHIPS + TABS                                  -->
+                <!-- ============================================================ -->
+                <Grid Grid.Row="1" Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Filter Chips -->
+                    <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                Spacing="6">
+                        <!-- All chip (selected) -->
+                        <Border Background="#6650A4FF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#55FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8A9;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="White"
+                                          FontSize="12" />
+                                <TextBlock Text="All"
+                                           Foreground="White"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Text chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8A4;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="Text"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Code chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE943;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="Code"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- URL chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE71B;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="URL"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Email chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE715;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="Email"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Image chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xEB9F;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="Image"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- File chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE7C3;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="File"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Color chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE790;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="Color"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- JSON chip -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="12,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE9D5;"
+                                          FontFamily="Segoe Fluent Icons"
+                                          Foreground="#AAFFFFFF"
+                                          FontSize="12" />
+                                <TextBlock Text="JSON"
+                                           Foreground="#AAFFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Right-side tabs: Pinned / Recent / History + Settings -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="6"
+                                VerticalAlignment="Center">
+                        <!-- Pinned -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="10,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="Pinned"
+                                           Foreground="#99FFFFFF"
+                                           FontSize="12"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="1"
+                                           Foreground="#66FFFFFF"
+                                           FontSize="10"
+                                           FontFamily="Segoe UI Variable Display"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Recent (selected) -->
+                        <Border Background="#6650A4FF"
+                                CornerRadius="8"
+                                Padding="10,6"
+                                BorderBrush="#55FFFFFF"
+                                BorderThickness="1">
+                            <TextBlock Text="Recent"
+                                       Foreground="White"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       FontFamily="Segoe UI Variable Display"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <!-- History -->
+                        <Border Background="#22FFFFFF"
+                                CornerRadius="8"
+                                Padding="10,6"
+                                BorderBrush="#22FFFFFF"
+                                BorderThickness="1">
+                            <TextBlock Text="History"
+                                       Foreground="#99FFFFFF"
+                                       FontSize="12"
+                                       FontFamily="Segoe UI Variable Display"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <!-- Settings gear -->
+                        <Border Background="#11FFFFFF"
+                                CornerRadius="8"
+                                Padding="6"
+                                Margin="4,0,0,0">
+                            <FontIcon Glyph="&#xE713;"
+                                      FontFamily="Segoe Fluent Icons"
+                                      Foreground="#88FFFFFF"
+                                      FontSize="14" />
+                        </Border>
+                        <!-- Close button -->
+                        <Border Background="#11FFFFFF"
+                                CornerRadius="8"
+                                Padding="6">
+                            <FontIcon Glyph="&#xE711;"
+                                      FontFamily="Segoe Fluent Icons"
+                                      Foreground="#88FFFFFF"
+                                      FontSize="14" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ============================================================ -->
+                <!-- ROW 2 — CLIPBOARD CARDS                                      -->
+                <!-- ============================================================ -->
+                <ScrollViewer Grid.Row="2"
+                              HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              HorizontalScrollMode="Enabled">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+
+                        <!-- ========== CARD 1: JSON ========== -->
+                        <Border Width="190" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC1B5E20" Offset="0.0" />
+                                    <GradientStop Color="#CC0D3B13" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Card header -->
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- JSON icon placeholder -->
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#3300FF00"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xE9D5;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#AAFFAA"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="JSON"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="36 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Card body -->
+                                <Border Grid.Row="1" Padding="12,10">
+                                    <TextBlock Foreground="#CCDDFFDD"
+                                               FontSize="11"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               TextWrapping="Wrap"
+                                               LineHeight="18">
+                                        <Run Text="{}{&quot;firstName&quot;: &quot;Sammy&quot;," />
+                                        <LineBreak />
+                                        <Run Text="&quot;lastName&quot;: &quot;Shark&quot;," />
+                                        <LineBreak />
+                                        <Run Text="&quot;online&quot;: true}" />
+                                    </TextBlock>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- ========== CARD 2: COLOR ========== -->
+                        <Border Width="190" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC7B1FA2" Offset="0.0" />
+                                    <GradientStop Color="#CCE91E63" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Card header -->
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#338002BF"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xE790;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#FFCC80FF"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Color"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="5 min, 26 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Card body — color swatch -->
+                                <Grid Grid.Row="1" Padding="12">
+                                    <StackPanel VerticalAlignment="Center"
+                                                HorizontalAlignment="Center"
+                                                Spacing="8">
+                                        <!-- Color swatch -->
+                                        <Border Width="80" Height="80"
+                                                CornerRadius="12"
+                                                Background="#8002BF"
+                                                HorizontalAlignment="Center"
+                                                BorderBrush="#55FFFFFF"
+                                                BorderThickness="2" />
+                                        <TextBlock Text="#8002bf"
+                                                   Foreground="White"
+                                                   FontSize="18"
+                                                   FontWeight="Bold"
+                                                   FontFamily="Cascadia Code, Consolas"
+                                                   HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- ========== CARD 3: IMAGE ========== -->
+                        <Border Width="190" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC263238" Offset="0.0" />
+                                    <GradientStop Color="#CC37474F" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Card header -->
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#2200BCD4"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xEB9F;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#80DEEA"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Image"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="6 min, 27 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Card body — image placeholder -->
+                                <Grid Grid.Row="1" Padding="12">
+                                    <Border CornerRadius="10"
+                                            Background="#33FFFFFF"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            MinHeight="120">
+                                        <StackPanel VerticalAlignment="Center"
+                                                    HorizontalAlignment="Center"
+                                                    Spacing="6">
+                                            <FontIcon Glyph="&#xEB9F;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#66FFFFFF"
+                                                      FontSize="36" />
+                                            <TextBlock Text="ClipPocket.app"
+                                                       Foreground="#AAFFFFFF"
+                                                       FontSize="12"
+                                                       FontFamily="Segoe UI Variable Display"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="/Applications/ClipPocket.app"
+                                                       Foreground="#66FFFFFF"
+                                                       FontSize="10"
+                                                       FontFamily="Segoe UI Variable Display"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="86 bytes"
+                                                       Foreground="#55FFFFFF"
+                                                       FontSize="10"
+                                                       FontFamily="Segoe UI Variable Display"
+                                                       HorizontalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- ========== CARD 4: FILE ========== -->
+                        <Border Width="190" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC0D47A1" Offset="0.0" />
+                                    <GradientStop Color="#CC1565C0" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Card header -->
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#2242A5F5"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xE7C3;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#90CAF9"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="File"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="7 min, 26 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Card body — file info -->
+                                <Grid Grid.Row="1" Padding="12">
+                                    <StackPanel VerticalAlignment="Center"
+                                                HorizontalAlignment="Center"
+                                                Spacing="8">
+                                        <!-- File icon -->
+                                        <Border Width="56" Height="56"
+                                                CornerRadius="10"
+                                                Background="#2242A5F5"
+                                                HorizontalAlignment="Center">
+                                            <FontIcon Glyph="&#xE7C3;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#90CAF9"
+                                                      FontSize="28"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="ClipPocket.app"
+                                                   Foreground="White"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   FontFamily="Segoe UI Variable Display"
+                                                   HorizontalAlignment="Center" />
+                                        <TextBlock Text="/Applications/ClipPocket.app"
+                                                   Foreground="#88FFFFFF"
+                                                   FontSize="10"
+                                                   FontFamily="Segoe UI Variable Display"
+                                                   HorizontalAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- ========== CARD 5: CODE ========== -->
+                        <Border Width="220" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC1A237E" Offset="0.0" />
+                                    <GradientStop Color="#CC283593" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Card header -->
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#227C4DFF"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xE943;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#B388FF"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="Code"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="8 min, 41 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Card body — code snippet -->
+                                <Border Grid.Row="1" Padding="12,10">
+                                    <TextBlock Foreground="#CCDDDDFF"
+                                               FontSize="11"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               TextWrapping="Wrap"
+                                               LineHeight="18">
+                                        <Run Foreground="#CE93D8" Text="private func" />
+                                        <LineBreak />
+                                        <Run Foreground="#64B5F6" Text="colorFromItem" />
+                                        <Run Foreground="#EEEEEE" Text="() ->" />
+                                        <LineBreak />
+                                        <Run Foreground="#CE93D8" Text="Color" />
+                                        <Run Foreground="#EEEEEE" Text="? {" />
+                                        <LineBreak />
+                                        <Run Foreground="#CE93D8" Text="  guard" />
+                                        <Run Foreground="#EEEEEE" Text=" item.type" />
+                                        <LineBreak />
+                                        <Run Foreground="#EEEEEE" Text="  == .color, " />
+                                        <Run Foreground="#CE93D8" Text="let" />
+                                        <LineBreak />
+                                        <Run Foreground="#EEEEEE" Text="  colorString = item.c" />
+                                    </TextBlock>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- ========== CARD 6: URL ========== -->
+                        <Border Width="190" MinHeight="240"
+                                CornerRadius="14"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                Padding="0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#CC4E342E" Offset="0.0" />
+                                    <GradientStop Color="#CC6D4C41" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0"
+                                        Background="#22FFFFFF"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0"
+                                                Width="36" Height="36"
+                                                CornerRadius="8"
+                                                Background="#228D6E63"
+                                                Margin="0,0,10,0">
+                                            <FontIcon Glyph="&#xE71B;"
+                                                      FontFamily="Segoe Fluent Icons"
+                                                      Foreground="#BCAAA4"
+                                                      FontSize="18"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="URL"
+                                                       Foreground="White"
+                                                       FontSize="14"
+                                                       FontWeight="Bold"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                            <TextBlock Text="1 hr, 46 sec"
+                                                       Foreground="#99FFFFFF"
+                                                       FontSize="11"
+                                                       FontFamily="Segoe UI Variable Display" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Row="1" Padding="12,10">
+                                    <TextBlock Foreground="#CCBBDEFB"
+                                               FontSize="11"
+                                               FontFamily="Segoe UI Variable Display"
+                                               TextWrapping="Wrap"
+                                               Text="https://github.com/Dhahd/ClipPocket" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
