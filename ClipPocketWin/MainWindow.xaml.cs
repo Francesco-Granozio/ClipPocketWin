@@ -7,6 +7,10 @@ using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using WinRT;
 using WinRT.Interop;
 
@@ -24,6 +28,8 @@ namespace ClipPocketWin
         private const double LuminanceSmoothing = 0.62;
         private const int SamplingPadding = 8;
         private const int ReadabilityUpdateIntervalMs = 260;
+        private const double CardHoverScale = 1.03;
+        private const double CardHoverAnimationDurationMs = 120;
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
         private static readonly Windows.UI.Color StrongProtectionTintColor = Windows.UI.Color.FromArgb(255, 1, 4, 12);
 
@@ -311,6 +317,57 @@ namespace ClipPocketWin
             }
 
             _ = RefreshBackdropProtectionAsync();
+        }
+
+        private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            if (sender is Border card)
+            {
+                AnimateCardScale(card, CardHoverScale);
+            }
+        }
+
+        private void Card_PointerExited(object sender, PointerRoutedEventArgs e)
+        {
+            if (sender is Border card)
+            {
+                AnimateCardScale(card, 1.0);
+            }
+        }
+
+        private static void AnimateCardScale(Border card, double targetScale)
+        {
+            if (card.RenderTransform is not ScaleTransform scaleTransform)
+            {
+                return;
+            }
+
+            var duration = new Duration(TimeSpan.FromMilliseconds(CardHoverAnimationDurationMs));
+
+            var scaleXAnimation = new DoubleAnimation
+            {
+                To = targetScale,
+                Duration = duration,
+                EnableDependentAnimation = true,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            var scaleYAnimation = new DoubleAnimation
+            {
+                To = targetScale,
+                Duration = duration,
+                EnableDependentAnimation = true,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            var storyboard = new Storyboard();
+            Storyboard.SetTarget(scaleXAnimation, scaleTransform);
+            Storyboard.SetTargetProperty(scaleXAnimation, nameof(ScaleTransform.ScaleX));
+            Storyboard.SetTarget(scaleYAnimation, scaleTransform);
+            Storyboard.SetTargetProperty(scaleYAnimation, nameof(ScaleTransform.ScaleY));
+            storyboard.Children.Add(scaleXAnimation);
+            storyboard.Children.Add(scaleYAnimation);
+            storyboard.Begin();
         }
 
         private void Window_Closed(object sender, WindowEventArgs args)

@@ -306,14 +306,20 @@
                               HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Disabled"
                               HorizontalScrollMode="Enabled">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
+                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="12,8,12,8">
 
                         <!-- ========== CARD 1: JSON ========== -->
                         <Border Width="190" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#551B5E20" Offset="0.0" />
@@ -382,10 +388,16 @@
 
                         <!-- ========== CARD 2: COLOR ========== -->
                         <Border Width="190" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#557B1FA2" Offset="0.0" />
@@ -459,10 +471,16 @@
 
                         <!-- ========== CARD 3: IMAGE ========== -->
                         <Border Width="190" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#55263238" Offset="0.0" />
@@ -548,10 +566,16 @@
 
                         <!-- ========== CARD 4: FILE ========== -->
                         <Border Width="190" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#550D47A1" Offset="0.0" />
@@ -637,10 +661,16 @@
 
                         <!-- ========== CARD 5: CODE ========== -->
                         <Border Width="220" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#551A237E" Offset="0.0" />
@@ -718,10 +748,16 @@
 
                         <!-- ========== CARD 6: URL ========== -->
                         <Border Width="190" MinHeight="240"
-                                CornerRadius="14"
-                                BorderBrush="#33FFFFFF"
-                                BorderThickness="1"
-                                Padding="0">
+                                 CornerRadius="14"
+                                 BorderBrush="#33FFFFFF"
+                                 BorderThickness="1"
+                                 RenderTransformOrigin="0.5,0.5"
+                                 PointerEntered="Card_PointerEntered"
+                                 PointerExited="Card_PointerExited"
+                                 Padding="0">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                     <GradientStop Color="#554E342E" Offset="0.0" />
