@@ -84,10 +84,10 @@ namespace ClipPocketWin
 
         private void Window_Activated(object sender, WindowActivatedEventArgs args)
         {
+            // Always keep acrylic active, even when window loses focus
             if (_configurationSource != null)
             {
-                _configurationSource.IsInputActive =
-                    args.WindowActivationState != WindowActivationState.Deactivated;
+                _configurationSource.IsInputActive = true;
             }
         }
 
