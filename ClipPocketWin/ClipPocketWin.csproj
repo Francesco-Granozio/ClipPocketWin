@@ -41,6 +41,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260209005" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ClipPocketWin.Application\ClipPocketWin.Application.csproj" />
+    <ProjectReference Include="..\ClipPocketWin.Infrastructure\ClipPocketWin.Infrastructure.csproj" />
   </ItemGroup>
 
   <!--

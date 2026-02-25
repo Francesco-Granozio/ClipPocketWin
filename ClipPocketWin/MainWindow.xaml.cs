@@ -1,6 +1,3 @@
-using System;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -11,6 +8,9 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using System;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using WinRT;
 using WinRT.Interop;
 
@@ -33,7 +33,7 @@ namespace ClipPocketWin
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
         private static readonly Windows.UI.Color StrongProtectionTintColor = Windows.UI.Color.FromArgb(255, 1, 4, 12);
 
-        private AppWindow m_AppWindow;
+        private readonly AppWindow m_AppWindow;
         private DesktopAcrylicController? _acrylicController;
         private SystemBackdropConfiguration? _configurationSource;
         private DispatcherQueueTimer? _readabilityTimer;
@@ -56,7 +56,7 @@ namespace ClipPocketWin
             m_AppWindow.TitleBar.ButtonForegroundColor = Colors.White;
             m_AppWindow.TitleBar.ButtonInactiveForegroundColor = Colors.Transparent;
 
-            var presenter = m_AppWindow.Presenter as OverlappedPresenter;
+            OverlappedPresenter? presenter = m_AppWindow.Presenter as OverlappedPresenter;
             if (presenter != null)
             {
                 presenter.IsResizable = true;
@@ -66,7 +66,7 @@ namespace ClipPocketWin
             }
 
             // Size the window
-            var displayArea = DisplayArea.GetFromWindowId(wndId, DisplayAreaFallback.Primary);
+            DisplayArea displayArea = DisplayArea.GetFromWindowId(wndId, DisplayAreaFallback.Primary);
             int windowWidth = 1100;
             int windowHeight = 420;
             int x = (displayArea.WorkArea.Width - windowWidth) / 2;
@@ -90,20 +90,23 @@ namespace ClipPocketWin
                 return false;
             }
 
-            _configurationSource = new SystemBackdropConfiguration();
-            _configurationSource.Theme = SystemBackdropTheme.Dark;
-            _configurationSource.IsInputActive = true;
+            _configurationSource = new SystemBackdropConfiguration
+            {
+                Theme = SystemBackdropTheme.Dark,
+                IsInputActive = true
+            };
 
-            _acrylicController = new DesktopAcrylicController();
-
-            // ── KEY SETTINGS FOR REAL GLASS TRANSPARENCY ──
-            // TintColor: the color overlay on the blurred background
-            // TintOpacity: 0 = no tint (fully transparent), 1 = solid tint
-            // LuminosityOpacity: 0 = maximum see-through, 1 = opaque luminosity layer
-            _acrylicController.TintColor = BaseTintColor;
-            _acrylicController.TintOpacity = MinTintOpacity;
-            _acrylicController.LuminosityOpacity = MinLuminosityOpacity;
-            _acrylicController.FallbackColor = Windows.UI.Color.FromArgb(200, BaseTintColor.R, BaseTintColor.G, BaseTintColor.B);
+            _acrylicController = new DesktopAcrylicController
+            {
+                // ── KEY SETTINGS FOR REAL GLASS TRANSPARENCY ──
+                // TintColor: the color overlay on the blurred background
+                // TintOpacity: 0 = no tint (fully transparent), 1 = solid tint
+                // LuminosityOpacity: 0 = maximum see-through, 1 = opaque luminosity layer
+                TintColor = BaseTintColor,
+                TintOpacity = MinTintOpacity,
+                LuminosityOpacity = MinLuminosityOpacity,
+                FallbackColor = Windows.UI.Color.FromArgb(200, BaseTintColor.R, BaseTintColor.G, BaseTintColor.B)
+            };
 
             // Attach to the window
             _acrylicController.AddSystemBackdropTarget(
@@ -266,7 +269,7 @@ namespace ClipPocketWin
                     byte g = (byte)((colorRef & 0x0000FF00) >> 8);
                     byte b = (byte)((colorRef & 0x00FF0000) >> 16);
 
-                    total += (0.2126d * r + 0.7152d * g + 0.0722d * b) / 255d;
+                    total += ((0.2126d * r) + (0.7152d * g) + (0.0722d * b)) / 255d;
                     validCount++;
                 }
             }
@@ -342,9 +345,9 @@ namespace ClipPocketWin
                 return;
             }
 
-            var duration = new Duration(TimeSpan.FromMilliseconds(CardHoverAnimationDurationMs));
+            Duration duration = new(TimeSpan.FromMilliseconds(CardHoverAnimationDurationMs));
 
-            var scaleXAnimation = new DoubleAnimation
+            DoubleAnimation scaleXAnimation = new()
             {
                 To = targetScale,
                 Duration = duration,
@@ -352,7 +355,7 @@ namespace ClipPocketWin
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
 
-            var scaleYAnimation = new DoubleAnimation
+            DoubleAnimation scaleYAnimation = new()
             {
                 To = targetScale,
                 Duration = duration,
@@ -360,7 +363,7 @@ namespace ClipPocketWin
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
 
-            var storyboard = new Storyboard();
+            Storyboard storyboard = new();
             Storyboard.SetTarget(scaleXAnimation, scaleTransform);
             Storyboard.SetTargetProperty(scaleXAnimation, nameof(ScaleTransform.ScaleX));
             Storyboard.SetTarget(scaleYAnimation, scaleTransform);
@@ -373,12 +376,8 @@ namespace ClipPocketWin
         private void Window_Closed(object sender, WindowEventArgs args)
         {
             StopReadabilityMonitoring();
-
-            if (_acrylicController != null)
-            {
-                _acrylicController.Dispose();
-                _acrylicController = null;
-            }
+            _acrylicController?.Dispose();
+            _acrylicController = null;
             _configurationSource = null;
         }
 

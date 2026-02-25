@@ -1,0 +1,323 @@
+using ClipPocketWin.Application.Abstractions;
+using ClipPocketWin.Domain;
+using ClipPocketWin.Domain.Abstractions;
+using ClipPocketWin.Domain.Models;
+using ClipPocketWin.Shared.ResultPattern;
+using Microsoft.Extensions.Logging;
+
+namespace ClipPocketWin.Application.Services;
+
+public sealed class ClipboardStateService : IClipboardStateService
+{
+    private readonly IClipboardHistoryRepository _historyRepository;
+    private readonly IPinnedClipboardRepository _pinnedRepository;
+    private readonly ISnippetRepository _snippetRepository;
+    private readonly ISettingsRepository _settingsRepository;
+    private readonly ILogger<ClipboardStateService> _logger;
+    private readonly object _syncRoot = new();
+
+    private List<ClipboardItem> _clipboardItems = [];
+    private List<PinnedClipboardItem> _pinnedItems = [];
+    private List<Snippet> _snippets = [];
+    private ClipPocketSettings _settings = new();
+
+    public ClipboardStateService(
+        IClipboardHistoryRepository historyRepository,
+        IPinnedClipboardRepository pinnedRepository,
+        ISnippetRepository snippetRepository,
+        ISettingsRepository settingsRepository,
+        ILogger<ClipboardStateService> logger)
+    {
+        _historyRepository = historyRepository;
+        _pinnedRepository = pinnedRepository;
+        _snippetRepository = snippetRepository;
+        _settingsRepository = settingsRepository;
+        _logger = logger;
+    }
+
+    public event EventHandler? StateChanged;
+
+    public IReadOnlyList<ClipboardItem> ClipboardItems
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _clipboardItems.ToArray();
+            }
+        }
+    }
+
+    public IReadOnlyList<PinnedClipboardItem> PinnedItems
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _pinnedItems.ToArray();
+            }
+        }
+    }
+
+    public IReadOnlyList<Snippet> Snippets
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _snippets.ToArray();
+            }
+        }
+    }
+
+    public ClipPocketSettings Settings
+    {
+        get
+        {
+            lock (_syncRoot)
+            {
+                return _settings;
+            }
+        }
+    }
+
+    public async Task<Result> InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            Result<ClipPocketSettings> settingsResult = await _settingsRepository.LoadAsync(cancellationToken);
+            if (settingsResult.IsFailure)
+            {
+                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize state settings.", settingsResult.Error?.Exception));
+            }
+
+            ClipPocketSettings settings = settingsResult.Value!;
+
+            Result<IReadOnlyList<ClipboardItem>> historyResult = settings.RememberHistory
+                ? await _historyRepository.LoadAsync(settings.EncryptHistory, cancellationToken)
+                : Result<IReadOnlyList<ClipboardItem>>.Success([]);
+
+            if (historyResult.IsFailure)
+            {
+                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize clipboard history state.", historyResult.Error?.Exception));
+            }
+
+            Result<IReadOnlyList<PinnedClipboardItem>> pinnedResult = await _pinnedRepository.LoadAsync(cancellationToken);
+            if (pinnedResult.IsFailure)
+            {
+                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize pinned state.", pinnedResult.Error?.Exception));
+            }
+
+            Result<IReadOnlyList<Snippet>> snippetsResult = await _snippetRepository.LoadAsync(cancellationToken);
+            if (snippetsResult.IsFailure)
+            {
+                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize snippets state.", snippetsResult.Error?.Exception));
+            }
+
+            lock (_syncRoot)
+            {
+                _settings = settings;
+                _clipboardItems = historyResult.Value!.ToList();
+                _pinnedItems = pinnedResult.Value!.ToList();
+                _snippets = snippetsResult.Value!.ToList();
+            }
+
+            _logger.LogInformation("Initialized state with {HistoryCount} history items, {PinnedCount} pinned items, {SnippetCount} snippets", _clipboardItems.Count, _pinnedItems.Count, _snippets.Count);
+            OnStateChanged();
+            return Result.Success();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Unexpected failure while initializing state.", exception));
+        }
+    }
+
+    public async Task<Result> AddClipboardItemAsync(ClipboardItem item, CancellationToken cancellationToken = default)
+    {
+        if (item is null)
+        {
+            return Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null."));
+        }
+
+        lock (_syncRoot)
+        {
+            if (_settings.IncognitoMode)
+            {
+                return Result.Success();
+            }
+
+            if (_clipboardItems.Any(existing => existing.IsEquivalentContent(item)))
+            {
+                return Result.Success();
+            }
+
+            _clipboardItems.Insert(0, item);
+
+            int targetLimit = _settings.EffectiveHistoryLimit;
+            if (_clipboardItems.Count > targetLimit)
+            {
+                _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+            }
+        }
+
+        Result persistResult = await PersistHistoryAsync(cancellationToken);
+        if (persistResult.IsFailure)
+        {
+            return persistResult;
+        }
+
+        OnStateChanged();
+        return Result.Success();
+    }
+
+    public async Task<Result> DeleteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        bool changed;
+        lock (_syncRoot)
+        {
+            changed = _clipboardItems.RemoveAll(x => x.Id == id) > 0;
+            _pinnedItems = _pinnedItems.Where(x => x.OriginalItem.Id != id).ToList();
+        }
+
+        if (!changed)
+        {
+            return Result.Success();
+        }
+
+        Result historyPersistResult = await PersistHistoryAsync(cancellationToken);
+        if (historyPersistResult.IsFailure)
+        {
+            return historyPersistResult;
+        }
+
+        Result pinnedPersistResult = await _pinnedRepository.SaveAsync(PinnedItems, cancellationToken);
+        if (pinnedPersistResult.IsFailure)
+        {
+            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist pinned items after deleting clipboard item.", pinnedPersistResult.Error?.Exception));
+        }
+
+        OnStateChanged();
+        return Result.Success();
+    }
+
+    public async Task<Result> ClearClipboardHistoryAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_syncRoot)
+        {
+            _clipboardItems.Clear();
+        }
+
+        Result clearResult = await _historyRepository.ClearAsync(cancellationToken);
+        if (clearResult.IsFailure)
+        {
+            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to clear clipboard history.", clearResult.Error?.Exception));
+        }
+
+        OnStateChanged();
+        return Result.Success();
+    }
+
+    public async Task<Result> TogglePinAsync(ClipboardItem item, CancellationToken cancellationToken = default)
+    {
+        if (item is null)
+        {
+            return Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null when toggling pin."));
+        }
+
+        lock (_syncRoot)
+        {
+            int index = _pinnedItems.FindIndex(x => x.OriginalItem.IsEquivalentContent(item));
+            if (index >= 0)
+            {
+                _pinnedItems.RemoveAt(index);
+            }
+            else
+            {
+                _pinnedItems.Insert(0, new PinnedClipboardItem { OriginalItem = item });
+                if (_pinnedItems.Count > DomainLimits.MaxPinnedItems)
+                {
+                    _pinnedItems = _pinnedItems.Take(DomainLimits.MaxPinnedItems).ToList();
+                }
+            }
+        }
+
+        Result saveResult = await _pinnedRepository.SaveAsync(PinnedItems, cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist pinned clipboard items.", saveResult.Error?.Exception));
+        }
+
+        OnStateChanged();
+        return Result.Success();
+    }
+
+    public async Task<Result> SaveSettingsAsync(ClipPocketSettings settings, CancellationToken cancellationToken = default)
+    {
+        if (settings is null)
+        {
+            return Result.Failure(new Error(ErrorCode.SettingsInvalid, "Settings cannot be null."));
+        }
+
+        bool encryptionChanged;
+        lock (_syncRoot)
+        {
+            encryptionChanged = _settings.EncryptHistory != settings.EncryptHistory;
+            _settings = settings;
+        }
+
+        Result saveSettingsResult = await _settingsRepository.SaveAsync(settings, cancellationToken);
+        if (saveSettingsResult.IsFailure)
+        {
+            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist settings.", saveSettingsResult.Error?.Exception));
+        }
+
+        if (encryptionChanged)
+        {
+            Result persistResult = await PersistHistoryAsync(cancellationToken);
+            if (persistResult.IsFailure)
+            {
+                return persistResult;
+            }
+        }
+
+        OnStateChanged();
+        return Result.Success();
+    }
+
+    private async Task<Result> PersistHistoryAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<ClipboardItem> snapshot;
+        ClipPocketSettings settings;
+
+        lock (_syncRoot)
+        {
+            settings = _settings;
+            snapshot = _clipboardItems
+                .Where(item => item.Type != ClipboardItemType.Image || item.BinaryContent?.Length <= DomainLimits.MaxPersistedImageBytes)
+                .Take(DomainLimits.MaxHistoryItemsHardLimit)
+                .ToList();
+        }
+
+        if (!settings.RememberHistory)
+        {
+            return Result.Success();
+        }
+
+        Result saveResult = await _historyRepository.SaveAsync(snapshot, settings.EncryptHistory, cancellationToken);
+        if (saveResult.IsFailure)
+        {
+            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist clipboard history.", saveResult.Error?.Exception));
+        }
+
+        return Result.Success();
+    }
+
+    private void OnStateChanged()
+    {
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+}

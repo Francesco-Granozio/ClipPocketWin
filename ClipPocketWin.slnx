@@ -4,6 +4,10 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
+  <Project Path="ClipPocketWin.Application/ClipPocketWin.Application.csproj" />
+  <Project Path="ClipPocketWin.Domain/ClipPocketWin.Domain.csproj" />
+  <Project Path="ClipPocketWin.Infrastructure/ClipPocketWin.Infrastructure.csproj" />
+  <Project Path="ClipPocketWin.Shared/ClipPocketWin.Shared.csproj" Id="e6f81685-8385-4bf9-be75-5892b187af3e" />
   <Project Path="ClipPocketWin/ClipPocketWin.csproj">
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
