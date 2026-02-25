@@ -45,7 +45,7 @@
                                    Text="Search clipboard..."
                                    Foreground="#66FFFFFF"
                                    FontSize="15"
-                                   FontFamily="Segoe UI Variable Display"
+                                   FontFamily="{StaticResource AppleLikeFontFamily}"
                                    VerticalAlignment="Center" />
                     </Grid>
                 </Border>
@@ -78,7 +78,7 @@
                                            Foreground="White"
                                            FontSize="12"
                                            FontWeight="SemiBold"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -96,7 +96,7 @@
                                 <TextBlock Text="Text"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -114,7 +114,7 @@
                                 <TextBlock Text="Code"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -132,7 +132,7 @@
                                 <TextBlock Text="URL"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -150,7 +150,7 @@
                                 <TextBlock Text="Email"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -168,7 +168,7 @@
                                 <TextBlock Text="Image"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -186,7 +186,7 @@
                                 <TextBlock Text="File"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -204,7 +204,7 @@
                                 <TextBlock Text="Color"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -222,7 +222,7 @@
                                 <TextBlock Text="JSON"
                                            Foreground="#AAFFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -243,12 +243,12 @@
                                 <TextBlock Text="Pinned"
                                            Foreground="#99FFFFFF"
                                            FontSize="12"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                                 <TextBlock Text="1"
                                            Foreground="#66FFFFFF"
                                            FontSize="10"
-                                           FontFamily="Segoe UI Variable Display"
+                                           FontFamily="{StaticResource AppleLikeFontFamily}"
                                            VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -262,7 +262,7 @@
                                        Foreground="White"
                                        FontSize="12"
                                        FontWeight="SemiBold"
-                                       FontFamily="Segoe UI Variable Display"
+                                       FontFamily="{StaticResource AppleLikeFontFamily}"
                                        VerticalAlignment="Center" />
                         </Border>
                         <!-- History -->
@@ -274,7 +274,7 @@
                             <TextBlock Text="History"
                                        Foreground="#99FFFFFF"
                                        FontSize="12"
-                                       FontFamily="Segoe UI Variable Display"
+                                       FontFamily="{StaticResource AppleLikeFontFamily}"
                                        VerticalAlignment="Center" />
                         </Border>
                         <!-- Settings gear -->
@@ -354,11 +354,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="36 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -367,7 +367,7 @@
                                 <Border Grid.Row="1" Padding="12,10">
                                     <TextBlock Foreground="#CCDDFFDD"
                                                FontSize="11"
-                                               FontFamily="Cascadia Code, Consolas"
+                                               FontFamily="{StaticResource AppleLikeFontFamily}"
                                                TextWrapping="Wrap"
                                                LineHeight="18">
                                         <Run Text="{}{&quot;firstName&quot;: &quot;Sammy&quot;," />
@@ -425,11 +425,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="5 min, 26 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -450,7 +450,7 @@
                                                    Foreground="White"
                                                    FontSize="18"
                                                    FontWeight="Bold"
-                                                   FontFamily="Cascadia Code, Consolas"
+                                                   FontFamily="{StaticResource AppleLikeFontFamily}"
                                                    HorizontalAlignment="Center" />
                                     </StackPanel>
                                 </Grid>
@@ -502,11 +502,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="6 min, 27 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -528,17 +528,17 @@
                                             <TextBlock Text="ClipPocket.app"
                                                        Foreground="#AAFFFFFF"
                                                        FontSize="12"
-                                                       FontFamily="Segoe UI Variable Display"
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}"
                                                        HorizontalAlignment="Center" />
                                             <TextBlock Text="/Applications/ClipPocket.app"
                                                        Foreground="#66FFFFFF"
                                                        FontSize="10"
-                                                       FontFamily="Segoe UI Variable Display"
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}"
                                                        HorizontalAlignment="Center" />
                                             <TextBlock Text="86 bytes"
                                                        Foreground="#55FFFFFF"
                                                        FontSize="10"
-                                                       FontFamily="Segoe UI Variable Display"
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}"
                                                        HorizontalAlignment="Center" />
                                         </StackPanel>
                                     </Border>
@@ -591,11 +591,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="7 min, 26 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -621,12 +621,12 @@
                                                    Foreground="White"
                                                    FontSize="13"
                                                    FontWeight="SemiBold"
-                                                   FontFamily="Segoe UI Variable Display"
+                                                   FontFamily="{StaticResource AppleLikeFontFamily}"
                                                    HorizontalAlignment="Center" />
                                         <TextBlock Text="/Applications/ClipPocket.app"
                                                    Foreground="#88FFFFFF"
                                                    FontSize="10"
-                                                   FontFamily="Segoe UI Variable Display"
+                                                   FontFamily="{StaticResource AppleLikeFontFamily}"
                                                    HorizontalAlignment="Center"
                                                    TextWrapping="Wrap"
                                                    TextAlignment="Center" />
@@ -680,11 +680,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="8 min, 41 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -693,7 +693,7 @@
                                 <Border Grid.Row="1" Padding="12,10">
                                     <TextBlock Foreground="#CCDDDDFF"
                                                FontSize="11"
-                                               FontFamily="Cascadia Code, Consolas"
+                                               FontFamily="{StaticResource AppleLikeFontFamily}"
                                                TextWrapping="Wrap"
                                                LineHeight="18">
                                         <Run Foreground="#CE93D8" Text="private func" />
@@ -760,11 +760,11 @@
                                                        Foreground="White"
                                                        FontSize="14"
                                                        FontWeight="Bold"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                             <TextBlock Text="1 hr, 46 sec"
                                                        Foreground="#99FFFFFF"
                                                        FontSize="11"
-                                                       FontFamily="Segoe UI Variable Display" />
+                                                       FontFamily="{StaticResource AppleLikeFontFamily}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -772,7 +772,7 @@
                                 <Border Grid.Row="1" Padding="12,10">
                                     <TextBlock Foreground="#CCBBDEFB"
                                                FontSize="11"
-                                               FontFamily="Segoe UI Variable Display"
+                                               FontFamily="{StaticResource AppleLikeFontFamily}"
                                                TextWrapping="Wrap"
                                                Text="https://github.com/Dhahd/ClipPocket" />
                                 </Border>
