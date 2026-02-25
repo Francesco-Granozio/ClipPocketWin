@@ -4,20 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="ClipPocket">
 
-    <Window.SystemBackdrop>
-        <DesktopAcrylicBackdrop />
-    </Window.SystemBackdrop>
+    <Grid Background="Transparent">
 
-    <Grid>
-
-        <!-- Subtle gradient overlay for depth -->
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#0D1B3E" Offset="0.0" />
-                <GradientStop Color="#0A1128" Offset="0.5" />
-                <GradientStop Color="#15275E" Offset="1.0" />
-            </LinearGradientBrush>
-        </Grid.Background>
 
         <!-- Main content container -->
         <Border Margin="0"
@@ -328,8 +316,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC1B5E20" Offset="0.0" />
-                                    <GradientStop Color="#CC0D3B13" Offset="1.0" />
+                                    <GradientStop Color="#551B5E20" Offset="0.0" />
+                                    <GradientStop Color="#550D3B13" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
@@ -400,8 +388,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC7B1FA2" Offset="0.0" />
-                                    <GradientStop Color="#CCE91E63" Offset="1.0" />
+                                    <GradientStop Color="#557B1FA2" Offset="0.0" />
+                                    <GradientStop Color="#55E91E63" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
@@ -477,8 +465,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC263238" Offset="0.0" />
-                                    <GradientStop Color="#CC37474F" Offset="1.0" />
+                                    <GradientStop Color="#55263238" Offset="0.0" />
+                                    <GradientStop Color="#5537474F" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
@@ -566,8 +554,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC0D47A1" Offset="0.0" />
-                                    <GradientStop Color="#CC1565C0" Offset="1.0" />
+                                    <GradientStop Color="#550D47A1" Offset="0.0" />
+                                    <GradientStop Color="#551565C0" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
@@ -655,8 +643,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC1A237E" Offset="0.0" />
-                                    <GradientStop Color="#CC283593" Offset="1.0" />
+                                    <GradientStop Color="#551A237E" Offset="0.0" />
+                                    <GradientStop Color="#55283593" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
@@ -736,8 +724,8 @@
                                 Padding="0">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#CC4E342E" Offset="0.0" />
-                                    <GradientStop Color="#CC6D4C41" Offset="1.0" />
+                                    <GradientStop Color="#554E342E" Offset="0.0" />
+                                    <GradientStop Color="#556D4C41" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <Grid>
