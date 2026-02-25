@@ -42,10 +42,14 @@ public enum ErrorCode
     // Application workflow errors (2000-2399)
     StateInitializationFailed = 2000,
     StatePersistenceFailed = 2001,
-    BackupExportFailed = 2100,
-    BackupImportFailed = 2101,
-    BackupPayloadInvalid = 2102,
-    BackupVersionUnsupported = 2103,
+    ClipboardMonitorStartFailed = 2002,
+    ClipboardMonitorReadFailed = 2003,
+    RuntimeStartFailed = 2004,
+    RuntimeStopFailed = 2005,
+    HotkeyRegistrationFailed = 2006,
+    TrayStartFailed = 2007,
+    EdgeMonitorStartFailed = 2008,
+    PanelOperationFailed = 2009,
 
     // Infrastructure storage/serialization errors (3000-3399)
     StoragePathUnavailable = 3000,

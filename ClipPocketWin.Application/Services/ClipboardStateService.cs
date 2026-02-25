@@ -9,6 +9,7 @@ namespace ClipPocketWin.Application.Services;
 
 public sealed class ClipboardStateService : IClipboardStateService
 {
+    private readonly IClipboardMonitor _clipboardMonitor;
     private readonly IClipboardHistoryRepository _historyRepository;
     private readonly IPinnedClipboardRepository _pinnedRepository;
     private readonly ISnippetRepository _snippetRepository;
@@ -20,14 +21,17 @@ public sealed class ClipboardStateService : IClipboardStateService
     private List<PinnedClipboardItem> _pinnedItems = [];
     private List<Snippet> _snippets = [];
     private ClipPocketSettings _settings = new();
+    private bool _runtimeStarted;
 
     public ClipboardStateService(
+        IClipboardMonitor clipboardMonitor,
         IClipboardHistoryRepository historyRepository,
         IPinnedClipboardRepository pinnedRepository,
         ISnippetRepository snippetRepository,
         ISettingsRepository settingsRepository,
         ILogger<ClipboardStateService> logger)
     {
+        _clipboardMonitor = clipboardMonitor;
         _historyRepository = historyRepository;
         _pinnedRepository = pinnedRepository;
         _snippetRepository = snippetRepository;
@@ -171,6 +175,62 @@ public sealed class ClipboardStateService : IClipboardStateService
         }
 
         OnStateChanged();
+        return Result.Success();
+    }
+
+    public async Task<Result> StartRuntimeAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_syncRoot)
+        {
+            if (_runtimeStarted)
+            {
+                return Result.Success();
+            }
+        }
+
+        Result startResult = await _clipboardMonitor.StartAsync(HandleClipboardItemCapturedAsync, cancellationToken);
+        if (startResult.IsFailure)
+        {
+            return Result.Failure(new Error(
+                ErrorCode.ClipboardMonitorStartFailed,
+                "Failed to start clipboard runtime monitor.",
+                startResult.Error?.Exception));
+        }
+
+        lock (_syncRoot)
+        {
+            _runtimeStarted = true;
+        }
+
+        _logger.LogInformation("Clipboard runtime monitor started.");
+        return Result.Success();
+    }
+
+    public async Task<Result> StopRuntimeAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_syncRoot)
+        {
+            if (!_runtimeStarted)
+            {
+                return Result.Success();
+            }
+        }
+
+        Result stopResult = await _clipboardMonitor.StopAsync(cancellationToken);
+        if (stopResult.IsFailure)
+        {
+            return Result.Failure(new Error(
+                ErrorCode.InvalidOperation,
+                "Failed to stop clipboard runtime monitor.",
+                stopResult.Error?.Exception));
+        }
+
+        lock (_syncRoot)
+        {
+            _runtimeStarted = false;
+        }
+
+        _logger.LogInformation("Clipboard runtime monitor stopped.");
         return Result.Success();
     }
 
@@ -319,5 +379,10 @@ public sealed class ClipboardStateService : IClipboardStateService
     private void OnStateChanged()
     {
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private Task<Result> HandleClipboardItemCapturedAsync(ClipboardItem item)
+    {
+        return AddClipboardItemAsync(item);
     }
 }

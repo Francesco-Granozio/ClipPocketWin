@@ -9,7 +9,7 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddClipPocketApplication(this IServiceCollection services)
     {
         services.AddSingleton<IClipboardStateService, ClipboardStateService>();
-        services.AddSingleton<IClipboardBackupService, ClipboardBackupService>();
+        services.AddSingleton<IAppRuntimeService, AppRuntimeService>();
         return services;
     }
 }

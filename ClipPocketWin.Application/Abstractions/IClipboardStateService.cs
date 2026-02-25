@@ -17,6 +17,10 @@ public interface IClipboardStateService
 
     Task<Result> InitializeAsync(CancellationToken cancellationToken = default);
 
+    Task<Result> StartRuntimeAsync(CancellationToken cancellationToken = default);
+
+    Task<Result> StopRuntimeAsync(CancellationToken cancellationToken = default);
+
     Task<Result> AddClipboardItemAsync(ClipboardItem item, CancellationToken cancellationToken = default);
 
     Task<Result> DeleteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default);
