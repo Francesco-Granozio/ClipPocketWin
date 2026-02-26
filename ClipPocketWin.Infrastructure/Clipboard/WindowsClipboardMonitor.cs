@@ -154,15 +154,15 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     captureRichTextEnabled = _captureRichTextEnabled;
                 }
 
-                Result<ClipboardItem?> captureResult = TryReadClipboardItem(captureRichTextEnabled);
+                Result<IReadOnlyList<ClipboardItem>> captureResult = TryReadClipboardItems(captureRichTextEnabled);
                 if (captureResult.IsFailure)
                 {
                     _logger.LogWarning(captureResult.Error?.Exception, "Clipboard capture failed with code {ErrorCode}: {Message}", captureResult.Error?.Code, captureResult.Error?.Message);
                     continue;
                 }
 
-                ClipboardItem? clipboardItem = captureResult.Value;
-                if (clipboardItem is null)
+                IReadOnlyList<ClipboardItem> clipboardItems = captureResult.Value!;
+                if (clipboardItems.Count == 0)
                 {
                     continue;
                 }
@@ -179,10 +179,13 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     continue;
                 }
 
-                Result callbackResult = await callback(clipboardItem);
-                if (callbackResult.IsFailure)
+                foreach (ClipboardItem clipboardItem in clipboardItems)
                 {
-                    _logger.LogWarning(callbackResult.Error?.Exception, "Clipboard item processing failed with code {ErrorCode}: {Message}", callbackResult.Error?.Code, callbackResult.Error?.Message);
+                    Result callbackResult = await callback(clipboardItem);
+                    if (callbackResult.IsFailure)
+                    {
+                        _logger.LogWarning(callbackResult.Error?.Exception, "Clipboard item processing failed with code {ErrorCode}: {Message}", callbackResult.Error?.Code, callbackResult.Error?.Message);
+                    }
                 }
             }
         }
@@ -195,11 +198,11 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         }
     }
 
-    private static Result<ClipboardItem?> TryReadClipboardItem(bool captureRichTextEnabled)
+    private static Result<IReadOnlyList<ClipboardItem>> TryReadClipboardItems(bool captureRichTextEnabled)
     {
         if (!OpenClipboardWithRetry())
         {
-            return Result<ClipboardItem?>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Clipboard is currently unavailable for reading."));
+            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Clipboard is currently unavailable for reading."));
         }
 
         try
@@ -207,22 +210,29 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             DateTimeOffset now = DateTimeOffset.UtcNow;
             (string? sourceApplicationIdentifier, string? sourceApplicationExecutablePath) = TryGetForegroundProcessInfo();
 
-            if (TryReadFilePath(out string? filePath))
+            if (TryReadFilePaths(out IReadOnlyList<string>? filePaths))
             {
-                return Result<ClipboardItem?>.Success(new ClipboardItem
+                List<ClipboardItem> fileItems = new(filePaths!.Count);
+                foreach (string filePath in filePaths)
                 {
-                    Type = ClipboardItemType.File,
-                    Timestamp = now,
-                    SourceApplicationIdentifier = sourceApplicationIdentifier,
-                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                    FilePath = filePath,
-                    TextContent = filePath
-                });
+                    fileItems.Add(new ClipboardItem
+                    {
+                        Type = ClipboardItemType.File,
+                        Timestamp = now,
+                        SourceApplicationIdentifier = sourceApplicationIdentifier,
+                        SourceApplicationExecutablePath = sourceApplicationExecutablePath,
+                        FilePath = filePath,
+                        TextContent = filePath
+                    });
+                }
+
+                return Result<IReadOnlyList<ClipboardItem>>.Success(fileItems);
             }
 
             if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
             {
-                return Result<ClipboardItem?>.Success(new ClipboardItem
+                return Result<IReadOnlyList<ClipboardItem>>.Success([
+                    new ClipboardItem
                 {
                     Type = ClipboardItemType.RichText,
                     Timestamp = now,
@@ -230,39 +240,44 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                     RichTextContent = richTextContent,
                     TextContent = richTextContent!.PlainText
-                });
+                }
+                ]);
             }
 
             if (TryReadImagePayload(out byte[]? imagePayload))
             {
-                return Result<ClipboardItem?>.Success(new ClipboardItem
+                return Result<IReadOnlyList<ClipboardItem>>.Success([
+                    new ClipboardItem
                 {
                     Type = ClipboardItemType.Image,
                     Timestamp = now,
                     SourceApplicationIdentifier = sourceApplicationIdentifier,
                     SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                     BinaryContent = imagePayload
-                });
+                }
+                ]);
             }
 
             if (!TryReadUnicodeText(out string? textContent) || string.IsNullOrWhiteSpace(textContent))
             {
-                return Result<ClipboardItem?>.Success(null);
+                return Result<IReadOnlyList<ClipboardItem>>.Success([]);
             }
 
             ClipboardItemType clipboardItemType = ClipboardItemClassifier.ClassifyText(textContent);
-            return Result<ClipboardItem?>.Success(new ClipboardItem
+            return Result<IReadOnlyList<ClipboardItem>>.Success([
+                new ClipboardItem
             {
                 Type = clipboardItemType,
                 Timestamp = now,
                 SourceApplicationIdentifier = sourceApplicationIdentifier,
                 SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                 TextContent = textContent
-            });
+            }
+            ]);
         }
         catch (Exception exception)
         {
-            return Result<ClipboardItem?>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Unexpected failure while reading clipboard payload.", exception));
+            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Unexpected failure while reading clipboard payload.", exception));
         }
         finally
         {
@@ -400,12 +415,12 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         return false;
     }
 
-    [GeneratedRegex(@"\\(b|i|ul|strike|cf\d+|highlight\d+|field|pict)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\\(b(?!0\b)|i(?!0\b)|ul(?!none\b|0\b)|strike(?!0\b)|field|pict)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex RtfSignificantFormattingRegex();
 
-    private static bool TryReadFilePath(out string? filePath)
+    private static bool TryReadFilePaths(out IReadOnlyList<string>? filePaths)
     {
-        filePath = null;
+        filePaths = null;
         if (!IsClipboardFormatAvailable(ClipboardFormatHDrop))
         {
             return false;
@@ -423,16 +438,31 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             return false;
         }
 
-        uint length = DragQueryFile(handle, 0, null, 0);
-        if (length == 0)
+        List<string> paths = new((int)fileCount);
+        for (uint fileIndex = 0; fileIndex < fileCount; fileIndex++)
+        {
+            uint length = DragQueryFile(handle, fileIndex, null, 0);
+            if (length == 0)
+            {
+                continue;
+            }
+
+            StringBuilder pathBuilder = new((int)length + 1);
+            _ = DragQueryFile(handle, fileIndex, pathBuilder, (uint)pathBuilder.Capacity);
+            string path = pathBuilder.ToString();
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                paths.Add(path);
+            }
+        }
+
+        if (paths.Count == 0)
         {
             return false;
         }
 
-        StringBuilder pathBuilder = new((int)length + 1);
-        _ = DragQueryFile(handle, 0, pathBuilder, (uint)pathBuilder.Capacity);
-        filePath = pathBuilder.ToString();
-        return !string.IsNullOrWhiteSpace(filePath);
+        filePaths = paths;
+        return true;
     }
 
     private static bool TryReadBytesFromFormat(uint clipboardFormat, out byte[]? data)

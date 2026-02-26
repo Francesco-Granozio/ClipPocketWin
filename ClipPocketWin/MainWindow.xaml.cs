@@ -696,8 +696,24 @@ namespace ClipPocketWin
             BitmapImage? previewImage = item.Type == ClipboardItemType.Image
                 ? ImagePreviewCache.Resolve(item.BinaryContent)
                 : null;
-            Visibility imagePreviewVisibility = previewImage is null ? Visibility.Collapsed : Visibility.Visible;
-            Visibility textPreviewVisibility = previewImage is null ? Visibility.Visible : Visibility.Collapsed;
+
+            bool isImage = previewImage is not null;
+            bool isColor = item.Type == ClipboardItemType.Color;
+            bool isFile = item.Type == ClipboardItemType.File;
+
+            Visibility imagePreviewVisibility = isImage ? Visibility.Visible : Visibility.Collapsed;
+            Visibility colorPreviewVisibility = isColor ? Visibility.Visible : Visibility.Collapsed;
+            Visibility filePreviewVisibility = isFile ? Visibility.Visible : Visibility.Collapsed;
+            Visibility textPreviewVisibility = (!isImage && !isColor && !isFile) ? Visibility.Visible : Visibility.Collapsed;
+
+            FileCardInfo fileCardInfo = CreateFileCardInfo(item.FilePath);
+            BitmapImage? fileIcon = isFile ? FileTypeIconCache.Resolve(item.FilePath) : null;
+            Visibility fileIconVisibility = fileIcon is null ? Visibility.Collapsed : Visibility.Visible;
+            Visibility fileGlyphVisibility = fileIcon is null ? Visibility.Visible : Visibility.Collapsed;
+
+            Brush colorPreviewForegroundBrush = isColor && TryParseHexColor(item.TextContent, out Windows.UI.Color parsedColor)
+                ? new SolidColorBrush(GetContrastingColor(parsedColor))
+                : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255));
 
             return new ClipboardCardViewModel(
                 item.Id,
@@ -711,18 +727,29 @@ namespace ClipPocketWin
                 sourceAppVisual.HasIcon ? Visibility.Collapsed : Visibility.Visible,
                 previewImage,
                 imagePreviewVisibility,
+                colorPreviewVisibility,
+                filePreviewVisibility,
                 textPreviewVisibility,
                 style.CardBackgroundBrush,
                 style.HeaderBackgroundBrush,
                 style.IconBackgroundBrush,
-                style.IconForegroundBrush);
+                style.IconForegroundBrush,
+                item.TextContent ?? string.Empty,
+                colorPreviewForegroundBrush,
+                fileIcon,
+                fileIconVisibility,
+                fileGlyphVisibility,
+                "\uE7C3",
+                fileCardInfo.Name,
+                fileCardInfo.Path,
+                fileCardInfo.Size);
         }
 
         private static ClipboardCardStyle GetCardStyle(ClipboardItem item, Windows.UI.Color? sourceVibrantColor)
         {
             if (item.Type == ClipboardItemType.Color && TryParseHexColor(item.TextContent, out Windows.UI.Color parsedColor))
             {
-                return BuildCardStyle(parsedColor, Windows.UI.Color.FromArgb(255, 255, 255, 255));
+                return BuildSolidColorCardStyle(parsedColor);
             }
 
             if (sourceVibrantColor is Windows.UI.Color iconAccent)
@@ -749,9 +776,42 @@ namespace ClipPocketWin
         {
             return new ClipboardCardStyle(
                 CreateCardBackgroundBrush(accentColor),
-                new SolidColorBrush(Windows.UI.Color.FromArgb(76, accentColor.R, accentColor.G, accentColor.B)),
+                CreateHeaderBackgroundBrush(accentColor),
                 new SolidColorBrush(Windows.UI.Color.FromArgb(102, accentColor.R, accentColor.G, accentColor.B)),
                 new SolidColorBrush(iconColor));
+        }
+
+        private static ClipboardCardStyle BuildSolidColorCardStyle(Windows.UI.Color color)
+        {
+            return new ClipboardCardStyle(
+                new SolidColorBrush(color),
+                CreateHeaderBackgroundBrush(color),
+                new SolidColorBrush(Windows.UI.Color.FromArgb(58, 255, 255, 255)),
+                new SolidColorBrush(GetContrastingColor(color)));
+        }
+
+        private static LinearGradientBrush CreateHeaderBackgroundBrush(Windows.UI.Color accentColor)
+        {
+            Windows.UI.Color lower = Darken(accentColor, 0.18f);
+            LinearGradientBrush brush = new()
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1)
+            };
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = accentColor,
+                Offset = 0
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = lower,
+                Offset = 1
+            });
+
+            return brush;
         }
 
         private static LinearGradientBrush CreateCardBackgroundBrush(Windows.UI.Color accentColor)
@@ -831,6 +891,78 @@ namespace ClipPocketWin
 
             color = Windows.UI.Color.FromArgb(a, r, g, b);
             return true;
+        }
+
+        private static Windows.UI.Color Darken(Windows.UI.Color color, float factor)
+        {
+            float clamped = Math.Clamp(factor, 0f, 1f);
+            byte r = (byte)Math.Clamp((int)Math.Round(color.R * (1f - clamped)), 0, 255);
+            byte g = (byte)Math.Clamp((int)Math.Round(color.G * (1f - clamped)), 0, 255);
+            byte b = (byte)Math.Clamp((int)Math.Round(color.B * (1f - clamped)), 0, 255);
+            return Windows.UI.Color.FromArgb(color.A, r, g, b);
+        }
+
+        private static Windows.UI.Color GetContrastingColor(Windows.UI.Color backgroundColor)
+        {
+            double luminance = ((0.2126d * backgroundColor.R) + (0.7152d * backgroundColor.G) + (0.0722d * backgroundColor.B)) / 255d;
+            return luminance > 0.56d
+                ? Windows.UI.Color.FromArgb(255, 16, 21, 30)
+                : Windows.UI.Color.FromArgb(255, 255, 255, 255);
+        }
+
+        private static FileCardInfo CreateFileCardInfo(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return new FileCardInfo("File", "Path unavailable", "Unknown size");
+            }
+
+            string normalizedPath = filePath.Trim();
+            string fileName = Path.GetFileName(normalizedPath);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = normalizedPath;
+            }
+
+            string fileSizeLabel = "Unknown size";
+            try
+            {
+                if (File.Exists(normalizedPath))
+                {
+                    long fileSize = new FileInfo(normalizedPath).Length;
+                    fileSizeLabel = FormatFileSize(fileSize);
+                }
+            }
+            catch
+            {
+                fileSizeLabel = "Unknown size";
+            }
+
+            return new FileCardInfo(fileName, normalizedPath, fileSizeLabel);
+        }
+
+        private static string FormatFileSize(long bytes)
+        {
+            if (bytes < 0)
+            {
+                return "Unknown size";
+            }
+
+            string[] units = ["bytes", "KB", "MB", "GB", "TB"];
+            double value = bytes;
+            int unitIndex = 0;
+            while (value >= 1024d && unitIndex < units.Length - 1)
+            {
+                value /= 1024d;
+                unitIndex++;
+            }
+
+            if (unitIndex == 0)
+            {
+                return $"{bytes} bytes";
+            }
+
+            return $"{value:0.#} {units[unitIndex]}";
         }
 
         private static string? ResolveTextPayload(ClipboardItem item)
@@ -1275,11 +1407,22 @@ namespace ClipPocketWin
                 Visibility sourceIconFallbackVisibility,
                 BitmapImage? previewImage,
                 Visibility imagePreviewVisibility,
+                Visibility colorPreviewVisibility,
+                Visibility filePreviewVisibility,
                 Visibility textPreviewVisibility,
                 Brush cardBackgroundBrush,
                 Brush headerBackgroundBrush,
                 Brush iconBackgroundBrush,
-                Brush iconForegroundBrush)
+                Brush iconForegroundBrush,
+                string colorPreviewText,
+                Brush colorPreviewForegroundBrush,
+                BitmapImage? fileIcon,
+                Visibility fileIconVisibility,
+                Visibility fileGlyphVisibility,
+                string fileGlyph,
+                string fileName,
+                string filePath,
+                string fileSize)
             {
                 Id = id;
                 TypeLabel = typeLabel;
@@ -1292,11 +1435,22 @@ namespace ClipPocketWin
                 SourceIconFallbackVisibility = sourceIconFallbackVisibility;
                 PreviewImage = previewImage;
                 ImagePreviewVisibility = imagePreviewVisibility;
+                ColorPreviewVisibility = colorPreviewVisibility;
+                FilePreviewVisibility = filePreviewVisibility;
                 TextPreviewVisibility = textPreviewVisibility;
                 CardBackgroundBrush = cardBackgroundBrush;
                 HeaderBackgroundBrush = headerBackgroundBrush;
                 IconBackgroundBrush = iconBackgroundBrush;
                 IconForegroundBrush = iconForegroundBrush;
+                ColorPreviewText = colorPreviewText;
+                ColorPreviewForegroundBrush = colorPreviewForegroundBrush;
+                FileIcon = fileIcon;
+                FileIconVisibility = fileIconVisibility;
+                FileGlyphVisibility = fileGlyphVisibility;
+                FileGlyph = fileGlyph;
+                FileName = fileName;
+                FilePath = filePath;
+                FileSize = fileSize;
                 _timestampLabel = GetRelativeTimestampLabel(CapturedAt);
             }
 
@@ -1339,6 +1493,10 @@ namespace ClipPocketWin
 
             public Visibility ImagePreviewVisibility { get; }
 
+            public Visibility ColorPreviewVisibility { get; }
+
+            public Visibility FilePreviewVisibility { get; }
+
             public Visibility TextPreviewVisibility { get; }
 
             public Brush CardBackgroundBrush { get; }
@@ -1348,6 +1506,24 @@ namespace ClipPocketWin
             public Brush IconBackgroundBrush { get; }
 
             public Brush IconForegroundBrush { get; }
+
+            public string ColorPreviewText { get; }
+
+            public Brush ColorPreviewForegroundBrush { get; }
+
+            public BitmapImage? FileIcon { get; }
+
+            public Visibility FileIconVisibility { get; }
+
+            public Visibility FileGlyphVisibility { get; }
+
+            public string FileGlyph { get; }
+
+            public string FileName { get; }
+
+            public string FilePath { get; }
+
+            public string FileSize { get; }
 
             public void RefreshRelativeTime()
             {
@@ -1466,11 +1642,69 @@ namespace ClipPocketWin
             }
         }
 
+        private sealed record FileCardInfo(string Name, string Path, string Size);
+
         private sealed record ClipboardCardStyle(
             Brush CardBackgroundBrush,
             Brush HeaderBackgroundBrush,
             Brush IconBackgroundBrush,
             Brush IconForegroundBrush);
+
+        private static class FileTypeIconCache
+        {
+            private static readonly Dictionary<string, BitmapImage?> Cache = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly string IconsCacheDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ClipPocketWin",
+                "cache",
+                "file-icons");
+
+            public static BitmapImage? Resolve(string? filePath)
+            {
+                if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                {
+                    return null;
+                }
+
+                string extension = Path.GetExtension(filePath);
+                string cacheKey = string.IsNullOrWhiteSpace(extension) ? "_noext" : extension;
+                if (Cache.TryGetValue(cacheKey, out BitmapImage? cached))
+                {
+                    return cached;
+                }
+
+                BitmapImage? icon = BuildIcon(filePath, cacheKey);
+                Cache[cacheKey] = icon;
+                return icon;
+            }
+
+            private static BitmapImage? BuildIcon(string filePath, string cacheKey)
+            {
+                try
+                {
+                    Directory.CreateDirectory(IconsCacheDirectory);
+                    string safeKey = cacheKey.Replace('.', '_');
+                    string iconPngPath = Path.Combine(IconsCacheDirectory, safeKey + ".png");
+                    if (!File.Exists(iconPngPath))
+                    {
+                        using System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(filePath);
+                        if (icon is null)
+                        {
+                            return null;
+                        }
+
+                        using System.Drawing.Bitmap bitmap = icon.ToBitmap();
+                        bitmap.Save(iconPngPath, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+
+                    return new BitmapImage(new Uri(iconPngPath));
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
 
         private sealed record SourceAppVisual(BitmapImage? Icon, Windows.UI.Color? VibrantColor, bool HasIcon);
 

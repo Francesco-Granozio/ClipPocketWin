@@ -209,6 +209,59 @@
                                                         Source="{Binding PreviewImage}"
                                                         Stretch="Uniform" />
                                                 </Border>
+                                                <Grid Visibility="{Binding ColorPreviewVisibility}">
+                                                    <TextBlock
+                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                        FontSize="30"
+                                                        FontWeight="Bold"
+                                                        Foreground="{Binding ColorPreviewForegroundBrush}"
+                                                        HorizontalAlignment="Center"
+                                                        Text="{Binding ColorPreviewText}"
+                                                        TextAlignment="Center"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        VerticalAlignment="Center" />
+                                                </Grid>
+                                                <StackPanel
+                                                    Spacing="6"
+                                                    VerticalAlignment="Top"
+                                                    Visibility="{Binding FilePreviewVisibility}">
+                                                    <Grid>
+                                                        <Image
+                                                            Width="42"
+                                                            Height="42"
+                                                            HorizontalAlignment="Left"
+                                                            Source="{Binding FileIcon}"
+                                                            VerticalAlignment="Center"
+                                                            Visibility="{Binding FileIconVisibility}" />
+                                                        <FontIcon
+                                                            FontFamily="Segoe Fluent Icons"
+                                                            FontSize="36"
+                                                            Foreground="#FFE4EAF8"
+                                                            Glyph="{Binding FileGlyph}"
+                                                            HorizontalAlignment="Left"
+                                                            VerticalAlignment="Center"
+                                                            Visibility="{Binding FileGlyphVisibility}" />
+                                                    </Grid>
+                                                    <TextBlock
+                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                        FontSize="14"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="#FFF5F8FF"
+                                                        Text="{Binding FileName}" />
+                                                    <TextBlock
+                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                        FontSize="11"
+                                                        Foreground="#C8D7E8FF"
+                                                        MaxLines="2"
+                                                        Text="{Binding FilePath}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        TextWrapping="Wrap" />
+                                                    <TextBlock
+                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                        FontSize="11"
+                                                        Foreground="#BFD2E4FF"
+                                                        Text="{Binding FileSize}" />
+                                                </StackPanel>
                                                 <TextBlock
                                                     FontFamily="{StaticResource AppleLikeFontFamily}"
                                                     FontSize="12"
