@@ -9,9 +9,11 @@ public static class PresentationServiceCollectionExtensions
     public static IServiceCollection AddClipPocketPresentationRuntime(this IServiceCollection services)
     {
         services.AddSingleton<IWindowPanelService, WindowPanelService>();
+        services.AddSingleton<IAutoPasteService, WindowsAutoPasteService>();
         services.AddSingleton<IGlobalHotkeyService, PollingGlobalHotkeyService>();
-        services.AddSingleton<ITrayService, NoOpTrayService>();
+        services.AddSingleton<ITrayService, WindowsTrayService>();
         services.AddSingleton<IEdgeMonitorService, MouseEdgeMonitorService>();
+        services.AddSingleton<IQuickActionsService, WindowsQuickActionsService>();
         return services;
     }
 }

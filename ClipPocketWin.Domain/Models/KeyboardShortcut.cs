@@ -12,5 +12,7 @@ public enum ShortcutModifiers
 
 public readonly record struct KeyboardShortcut(uint KeyCode, ShortcutModifiers Modifiers, string DisplayString)
 {
-    public static KeyboardShortcut Default => new('C', ShortcutModifiers.Control | ShortcutModifiers.Shift, "Ctrl+Shift+C");
+    private const uint VkOem1 = 0xBA;
+
+    public static KeyboardShortcut Default => new(VkOem1, ShortcutModifiers.Control, "Ctrl+ò");
 }

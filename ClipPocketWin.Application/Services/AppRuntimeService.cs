@@ -2,11 +2,16 @@ using ClipPocketWin.Application.Abstractions;
 using ClipPocketWin.Domain.Models;
 using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.Logging;
+using System.Runtime.InteropServices;
 
 namespace ClipPocketWin.Application.Services;
 
 public sealed class AppRuntimeService : IAppRuntimeService
 {
+    private const int OutsideClickPollIntervalMs = 45;
+    private const int VkLButton = 0x01;
+    private const int VkRButton = 0x02;
+
     private readonly IClipboardStateService _clipboardStateService;
     private readonly IGlobalHotkeyService _globalHotkeyService;
     private readonly ITrayService _trayService;
@@ -16,6 +21,8 @@ public sealed class AppRuntimeService : IAppRuntimeService
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
 
     private bool _started;
+    private CancellationTokenSource? _outsideClickMonitorCts;
+    private Task? _outsideClickMonitorTask;
 
     public AppRuntimeService(
         IClipboardStateService clipboardStateService,
@@ -59,6 +66,7 @@ public sealed class AppRuntimeService : IAppRuntimeService
             await StartTrayDegradedAsync(cancellationToken);
             await StartHotkeyDegradedAsync(_clipboardStateService.Settings.KeyboardShortcut, cancellationToken);
             await StartEdgeMonitorDegradedAsync(_clipboardStateService.Settings, cancellationToken);
+            await StartOutsideClickMonitorDegradedAsync(cancellationToken);
 
             _started = true;
             _logger.LogInformation("Application runtime services started.");
@@ -98,6 +106,12 @@ public sealed class AppRuntimeService : IAppRuntimeService
             if (edgeResult.IsFailure)
             {
                 _logger.LogWarning(edgeResult.Error?.Exception, "Edge monitor stop failed with code {ErrorCode}: {Message}", edgeResult.Error?.Code, edgeResult.Error?.Message);
+            }
+
+            Result outsideClickStopResult = await StopOutsideClickMonitorAsync(cancellationToken);
+            if (outsideClickStopResult.IsFailure)
+            {
+                _logger.LogWarning(outsideClickStopResult.Error?.Exception, "Outside-click monitor stop failed with code {ErrorCode}: {Message}", outsideClickStopResult.Error?.Code, outsideClickStopResult.Error?.Message);
             }
 
             Result stateRuntimeResult = await _clipboardStateService.StopRuntimeAsync(cancellationToken);
@@ -149,6 +163,126 @@ public sealed class AppRuntimeService : IAppRuntimeService
         {
             _logger.LogWarning(edgeResult.Error?.Exception, "Edge monitor failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", edgeResult.Error?.Code, edgeResult.Error?.Message);
         }
+    }
+
+    private async Task StartOutsideClickMonitorDegradedAsync(CancellationToken cancellationToken)
+    {
+        Result startResult = await StartOutsideClickMonitorAsync(cancellationToken);
+        if (startResult.IsFailure)
+        {
+            _logger.LogWarning(startResult.Error?.Exception, "Outside-click monitor failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", startResult.Error?.Code, startResult.Error?.Message);
+        }
+    }
+
+    private Task<Result> StartOutsideClickMonitorAsync(CancellationToken cancellationToken)
+    {
+        if (_outsideClickMonitorTask is not null)
+        {
+            return Task.FromResult(Result.Success());
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            _outsideClickMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _outsideClickMonitorTask = Task.Run(() => OutsideClickMonitorLoopAsync(_outsideClickMonitorCts.Token), CancellationToken.None);
+            return Task.FromResult(Result.Success());
+        }
+        catch (Exception exception)
+        {
+            _outsideClickMonitorCts?.Dispose();
+            _outsideClickMonitorCts = null;
+            _outsideClickMonitorTask = null;
+            return Task.FromResult(Result.Failure(new Error(
+                ErrorCode.InvalidOperation,
+                "Failed to start outside-click monitor.",
+                exception)));
+        }
+    }
+
+    private async Task<Result> StopOutsideClickMonitorAsync(CancellationToken cancellationToken)
+    {
+        Task? monitorTask = _outsideClickMonitorTask;
+        CancellationTokenSource? monitorCts = _outsideClickMonitorCts;
+
+        _outsideClickMonitorTask = null;
+        _outsideClickMonitorCts = null;
+
+        if (monitorTask is null)
+        {
+            return Result.Success();
+        }
+
+        try
+        {
+            monitorCts?.Cancel();
+            await monitorTask.WaitAsync(cancellationToken);
+            return Result.Success();
+        }
+        catch (OperationCanceledException) when (monitorCts?.IsCancellationRequested == true)
+        {
+            return Result.Success();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return Result.Failure(new Error(
+                ErrorCode.InvalidOperation,
+                "Failed to stop outside-click monitor.",
+                exception));
+        }
+        finally
+        {
+            monitorCts?.Dispose();
+        }
+    }
+
+    private async Task OutsideClickMonitorLoopAsync(CancellationToken cancellationToken)
+    {
+        bool wasLeftPressed = false;
+        bool wasRightPressed = false;
+
+        try
+        {
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(OutsideClickPollIntervalMs));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                bool leftPressed = IsKeyPressed(VkLButton);
+                bool rightPressed = IsKeyPressed(VkRButton);
+                bool clickStarted = (!wasLeftPressed && leftPressed) || (!wasRightPressed && rightPressed);
+
+                wasLeftPressed = leftPressed;
+                wasRightPressed = rightPressed;
+
+                if (!clickStarted || !_windowPanelService.IsVisible || _windowPanelService.IsPointerOverPanel())
+                {
+                    continue;
+                }
+
+                Result hideResult = await _windowPanelService.HideAsync(cancellationToken);
+                if (hideResult.IsFailure)
+                {
+                    _logger.LogWarning(hideResult.Error?.Exception, "Panel hide failed (outside click). Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Outside-click monitor loop terminated unexpectedly.");
+        }
+    }
+
+    private static bool IsKeyPressed(int virtualKey)
+    {
+        short state = GetAsyncKeyState(virtualKey);
+        return (state & 0x8000) != 0;
     }
 
     private void SubscribeRuntimeEvents()
@@ -239,4 +373,7 @@ public sealed class AppRuntimeService : IAppRuntimeService
             _logger.LogWarning(hideResult.Error?.Exception, "Panel hide failed ({Source}). Code {ErrorCode}: {Message}", source, hideResult.Error?.Code, hideResult.Error?.Message);
         }
     }
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
 }

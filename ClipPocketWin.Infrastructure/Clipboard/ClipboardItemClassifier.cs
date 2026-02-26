@@ -1,5 +1,6 @@
 using ClipPocketWin.Domain.Models;
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -16,6 +17,11 @@ internal static partial class ClipboardItemClassifier
 
         string trimmed = text.Trim();
         if (IsEmail(trimmed))
+        {
+            return ClipboardItemType.Email;
+        }
+
+        if (LooksLikeMailTo(trimmed))
         {
             return ClipboardItemType.Email;
         }
@@ -40,7 +46,7 @@ internal static partial class ClipboardItemClassifier
             return ClipboardItemType.Color;
         }
 
-        if (LooksLikeCode(text))
+        if (LooksLikeCode(trimmed))
         {
             return ClipboardItemType.Code;
         }
@@ -55,9 +61,17 @@ internal static partial class ClipboardItemClassifier
             return false;
         }
 
-        return string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(uri.Scheme, Uri.UriSchemeFtp, StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(uri.Scheme, Uri.UriSchemeMailto, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeMailTo(string input)
+    {
+        if (!Uri.TryCreate(input, UriKind.Absolute, out Uri? uri))
+        {
+            return false;
+        }
+
+        return string.Equals(uri.Scheme, Uri.UriSchemeMailto, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsJson(string input)
@@ -93,41 +107,45 @@ internal static partial class ClipboardItemClassifier
             return false;
         }
 
-        int score = 0;
-        if (input.Contains('\n'))
-        {
-            score++;
-        }
+        bool[] indicators =
+        [
+            input.Contains("func ", StringComparison.Ordinal) || input.Contains("function ", StringComparison.Ordinal),
+            input.Contains("class ", StringComparison.Ordinal) || input.Contains("struct ", StringComparison.Ordinal),
+            input.Contains("import ", StringComparison.Ordinal) || input.Contains("package ", StringComparison.Ordinal),
+            input.Contains("const ", StringComparison.Ordinal) || input.Contains("let ", StringComparison.Ordinal) || input.Contains("var ", StringComparison.Ordinal),
+            input.Contains("def ", StringComparison.Ordinal) || input.Contains("=>", StringComparison.Ordinal),
+            input.Split('\n').Length > 3 && (input.Contains('{') || input.Contains(':')),
+            input.Contains("public ", StringComparison.Ordinal) || input.Contains("private ", StringComparison.Ordinal),
+            ControlFlowRegex().IsMatch(input)
+        ];
 
-        if (input.Contains('{') && input.Contains('}'))
-        {
-            score++;
-        }
-
-        if (input.Contains(";") || input.Contains("=>") || input.Contains("::"))
-        {
-            score++;
-        }
-
-        if (CodeKeywordRegex().IsMatch(input))
-        {
-            score++;
-        }
-
-        return score >= 2;
+        int indicatorCount = indicators.Count(indicator => indicator);
+        return indicatorCount >= 2;
     }
 
     [GeneratedRegex(@"^[\+]?[(]?[0-9]{1,4}[)]?[-\s\./0-9]{6,}$", RegexOptions.Compiled)]
     private static partial Regex PhoneRegex();
 
-    [GeneratedRegex(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex EmailRegex();
 
-    [GeneratedRegex(@"^(#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(0|0?\.\d+|1)\s*\))$", RegexOptions.Compiled)]
-    private static partial Regex ColorRegex();
+    [GeneratedRegex(@"^#([0-9a-fA-F]{3}){1,2}$", RegexOptions.Compiled)]
+    private static partial Regex HexColorRegex();
 
-    [GeneratedRegex(@"\b(class|public|private|protected|internal|function|func|let|var|const|return|using|namespace|if|else|switch|case|for|foreach|while|async|await)\b", RegexOptions.Compiled)]
-    private static partial Regex CodeKeywordRegex();
+    [GeneratedRegex(@"^rgb\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex RgbColorRegex();
+
+    [GeneratedRegex(@"^hsl\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex HslColorRegex();
+
+    [GeneratedRegex(@"^rgba\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex RgbaColorRegex();
+
+    [GeneratedRegex(@"^hsla\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex HslaColorRegex();
+
+    [GeneratedRegex(@"^\s*(if|for|while)\s*\(", RegexOptions.Compiled)]
+    private static partial Regex ControlFlowRegex();
 
     private static bool IsPhone(string input)
     {
@@ -141,6 +159,10 @@ internal static partial class ClipboardItemClassifier
 
     private static bool IsColor(string input)
     {
-        return ColorRegex().IsMatch(input);
+        return HexColorRegex().IsMatch(input)
+            || RgbColorRegex().IsMatch(input)
+            || HslColorRegex().IsMatch(input)
+            || RgbaColorRegex().IsMatch(input)
+            || HslaColorRegex().IsMatch(input);
     }
 }

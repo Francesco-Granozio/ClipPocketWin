@@ -4,16 +4,18 @@ using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace ClipPocketWin.Infrastructure.Clipboard;
 
-public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
+public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
 {
     private const uint ClipboardFormatUnicodeText = 13;
     private const uint ClipboardFormatDib = 8;
     private const uint ClipboardFormatDibV5 = 17;
     private const uint ClipboardFormatHDrop = 15;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint DragQueryFileCount = 0xFFFFFFFF;
     private static readonly uint HtmlClipboardFormat = RegisterClipboardFormat("HTML Format");
     private static readonly uint RtfClipboardFormat = RegisterClipboardFormat("Rich Text Format");
@@ -26,6 +28,7 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
     private Task? _monitorTask;
     private Func<ClipboardItem, Task<Result>>? _captureCallback;
     private uint _lastClipboardSequence;
+    private bool _captureRichTextEnabled;
     private bool _isRunning;
 
     public WindowsClipboardMonitor(ILogger<WindowsClipboardMonitor> logger)
@@ -33,7 +36,10 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         _logger = logger;
     }
 
-    public Task<Result> StartAsync(Func<ClipboardItem, Task<Result>> onClipboardItemCapturedAsync, CancellationToken cancellationToken = default)
+    public Task<Result> StartAsync(
+        Func<ClipboardItem, Task<Result>> onClipboardItemCapturedAsync,
+        bool captureRichTextEnabled,
+        CancellationToken cancellationToken = default)
     {
         if (onClipboardItemCapturedAsync is null)
         {
@@ -51,6 +57,7 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
 
                 _monitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _captureCallback = onClipboardItemCapturedAsync;
+                _captureRichTextEnabled = captureRichTextEnabled;
                 _lastClipboardSequence = GetClipboardSequenceNumber();
                 _isRunning = true;
                 _monitorTask = Task.Run(() => MonitorLoopAsync(_monitorCts.Token), CancellationToken.None);
@@ -141,7 +148,13 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
 
                 _lastClipboardSequence = currentSequence;
 
-                Result<ClipboardItem?> captureResult = TryReadClipboardItem();
+                bool captureRichTextEnabled;
+                lock (_syncRoot)
+                {
+                    captureRichTextEnabled = _captureRichTextEnabled;
+                }
+
+                Result<ClipboardItem?> captureResult = TryReadClipboardItem(captureRichTextEnabled);
                 if (captureResult.IsFailure)
                 {
                     _logger.LogWarning(captureResult.Error?.Exception, "Clipboard capture failed with code {ErrorCode}: {Message}", captureResult.Error?.Code, captureResult.Error?.Message);
@@ -182,7 +195,7 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         }
     }
 
-    private static Result<ClipboardItem?> TryReadClipboardItem()
+    private static Result<ClipboardItem?> TryReadClipboardItem(bool captureRichTextEnabled)
     {
         if (!OpenClipboardWithRetry())
         {
@@ -192,6 +205,7 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         try
         {
             DateTimeOffset now = DateTimeOffset.UtcNow;
+            (string? sourceApplicationIdentifier, string? sourceApplicationExecutablePath) = TryGetForegroundProcessInfo();
 
             if (TryReadFilePath(out string? filePath))
             {
@@ -199,8 +213,23 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
                 {
                     Type = ClipboardItemType.File,
                     Timestamp = now,
+                    SourceApplicationIdentifier = sourceApplicationIdentifier,
+                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                     FilePath = filePath,
                     TextContent = filePath
+                });
+            }
+
+            if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
+            {
+                return Result<ClipboardItem?>.Success(new ClipboardItem
+                {
+                    Type = ClipboardItemType.RichText,
+                    Timestamp = now,
+                    SourceApplicationIdentifier = sourceApplicationIdentifier,
+                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
+                    RichTextContent = richTextContent,
+                    TextContent = richTextContent!.PlainText
                 });
             }
 
@@ -210,18 +239,9 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
                 {
                     Type = ClipboardItemType.Image,
                     Timestamp = now,
+                    SourceApplicationIdentifier = sourceApplicationIdentifier,
+                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                     BinaryContent = imagePayload
-                });
-            }
-
-            if (TryReadRichTextContent(out RichTextContent? richTextContent))
-            {
-                return Result<ClipboardItem?>.Success(new ClipboardItem
-                {
-                    Type = ClipboardItemType.RichText,
-                    Timestamp = now,
-                    RichTextContent = richTextContent,
-                    TextContent = richTextContent!.PlainText
                 });
             }
 
@@ -235,6 +255,8 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
             {
                 Type = clipboardItemType,
                 Timestamp = now,
+                SourceApplicationIdentifier = sourceApplicationIdentifier,
+                SourceApplicationExecutablePath = sourceApplicationExecutablePath,
                 TextContent = textContent
             });
         }
@@ -289,7 +311,7 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         return TryReadBytesFromFormat(ClipboardFormatDib, out imagePayload);
     }
 
-    private static bool TryReadRichTextContent(out RichTextContent? richTextContent)
+    private static bool TryReadRichTextContent(bool captureRichTextEnabled, out RichTextContent? richTextContent)
     {
         richTextContent = null;
 
@@ -312,7 +334,14 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
             plainText = text;
         }
 
-        if (rtfData is null && htmlData is null)
+        if ((rtfData is null && htmlData is null) || string.IsNullOrWhiteSpace(plainText))
+        {
+            return false;
+        }
+
+        bool isMixed = HasMixedContent(rtfData, htmlData);
+        bool isFormatted = captureRichTextEnabled && HasSignificantFormatting(rtfData, htmlData);
+        if (!isMixed && !isFormatted)
         {
             return false;
         }
@@ -320,6 +349,59 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         richTextContent = new RichTextContent(rtfData, htmlData, plainText);
         return true;
     }
+
+    private static bool HasMixedContent(byte[]? rtfData, byte[]? htmlData)
+    {
+        if (rtfData is not null)
+        {
+            string rtf = Encoding.ASCII.GetString(rtfData);
+            if (rtf.Contains("\\pict", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        if (htmlData is not null)
+        {
+            string html = Encoding.UTF8.GetString(htmlData);
+            if (html.Contains("<img", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasSignificantFormatting(byte[]? rtfData, byte[]? htmlData)
+    {
+        if (rtfData is not null)
+        {
+            string rtf = Encoding.ASCII.GetString(rtfData);
+            if (RtfSignificantFormattingRegex().IsMatch(rtf))
+            {
+                return true;
+            }
+        }
+
+        if (htmlData is not null)
+        {
+            string html = Encoding.UTF8.GetString(htmlData);
+            string[] formattingTags = ["<b>", "<i>", "<strong>", "<em>", "<h1", "<h2", "<h3", "<table", "<ul", "<ol", "<span style", "<font", "<mark", "<img"];
+            foreach (string tag in formattingTags)
+            {
+                if (html.Contains(tag, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    [GeneratedRegex(@"\\(b|i|ul|strike|cf\d+|highlight\d+|field|pict)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex RtfSignificantFormattingRegex();
 
     private static bool TryReadFilePath(out string? filePath)
     {
@@ -409,11 +491,79 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
         return false;
     }
 
+    private static (string? ProcessIdentifier, string? ExecutablePath) TryGetForegroundProcessInfo()
+    {
+        IntPtr foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == IntPtr.Zero)
+        {
+            return (null, null);
+        }
+
+        _ = GetWindowThreadProcessId(foregroundWindow, out uint processId);
+        if (processId == 0)
+        {
+            return (null, null);
+        }
+
+        string? processPath = TryResolveProcessExecutablePath(processId);
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            return (null, null);
+        }
+
+        string processName = Path.GetFileNameWithoutExtension(processPath);
+        string? processIdentifier = string.IsNullOrWhiteSpace(processName) ? null : processName;
+        return (processIdentifier, processPath);
+    }
+
+    private static string? TryResolveProcessExecutablePath(uint processId)
+    {
+        IntPtr processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (processHandle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            StringBuilder buffer = new(1024);
+            uint length = (uint)buffer.Capacity;
+            if (!QueryFullProcessImageName(processHandle, 0, buffer, ref length))
+            {
+                return null;
+            }
+
+            string candidate = buffer.ToString();
+            return string.IsNullOrWhiteSpace(candidate) ? null : candidate;
+        }
+        finally
+        {
+            _ = CloseHandle(processHandle);
+        }
+    }
+
+    public Task<Result> UpdateCaptureRichTextAsync(bool captureRichTextEnabled, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_syncRoot)
+        {
+            _captureRichTextEnabled = captureRichTextEnabled;
+        }
+
+        return Task.FromResult(Result.Success());
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool OpenClipboard(IntPtr hWndNewOwner);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
     [DllImport("user32.dll")]
     private static extern bool IsClipboardFormatAvailable(uint format);
@@ -432,6 +582,15 @@ public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
 
     [DllImport("kernel32.dll")]
     private static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint desiredAccess, bool inheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr processHandle, uint flags, StringBuilder executablePath, ref uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr objectHandle);
 
     [DllImport("kernel32.dll")]
     private static extern nuint GlobalSize(IntPtr hMem);

@@ -6,6 +6,8 @@ public interface IWindowPanelService
 {
     bool IsVisible { get; }
 
+    nint LastExternalForegroundWindowHandle { get; }
+
     void AttachWindowHandle(nint windowHandle);
 
     Task<Result> ShowAsync(CancellationToken cancellationToken = default);

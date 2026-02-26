@@ -5,7 +5,12 @@ namespace ClipPocketWin.Application.Abstractions;
 
 public interface IClipboardMonitor
 {
-    Task<Result> StartAsync(Func<ClipboardItem, Task<Result>> onClipboardItemCapturedAsync, CancellationToken cancellationToken = default);
+    Task<Result> StartAsync(
+        Func<ClipboardItem, Task<Result>> onClipboardItemCapturedAsync,
+        bool captureRichTextEnabled,
+        CancellationToken cancellationToken = default);
+
+    Task<Result> UpdateCaptureRichTextAsync(bool captureRichTextEnabled, CancellationToken cancellationToken = default);
 
     Task<Result> StopAsync(CancellationToken cancellationToken = default);
 }

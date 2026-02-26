@@ -2,11 +2,13 @@ using global::ClipPocketWin.Application.Abstractions;
 using global::ClipPocketWin.Application.DependencyInjection;
 using global::ClipPocketWin.DependencyInjection;
 using global::ClipPocketWin.Infrastructure.DependencyInjection;
+using global::ClipPocketWin.Logging;
 using global::ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using WinRT.Interop;
 
@@ -45,6 +47,7 @@ namespace ClipPocketWin
             }
 
             _window.Closed += Window_Closed;
+            _window.Activated += Window_Activated;
             _window.Activate();
         }
 
@@ -82,6 +85,11 @@ namespace ClipPocketWin
 
         private async void Window_Closed(object sender, WindowEventArgs args)
         {
+            if (_window is not null)
+            {
+                _window.Activated -= Window_Activated;
+            }
+
             if (_appRuntimeService is null)
             {
                 return;
@@ -95,6 +103,27 @@ namespace ClipPocketWin
                 return;
             }
 
+        }
+
+        private async void Window_Activated(object sender, WindowActivatedEventArgs args)
+        {
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                return;
+            }
+
+            IWindowPanelService panelService = Services.GetRequiredService<IWindowPanelService>();
+            if (!panelService.IsVisible || panelService.IsPointerOverPanel())
+            {
+                return;
+            }
+
+            Result hideResult = await panelService.HideAsync();
+            if (hideResult.IsFailure)
+            {
+                ILogger<App>? logger = Services.GetService<ILogger<App>>();
+                logger?.LogWarning(hideResult.Error?.Exception, "Failed to auto-hide panel on window deactivation. Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
+            }
         }
 
         private async void AppRuntimeService_ExitRequested(object? sender, EventArgs e)
@@ -111,7 +140,17 @@ namespace ClipPocketWin
         private static ServiceProvider BuildServiceProvider()
         {
             ServiceCollection services = new();
-            services.AddLogging(builder => builder.AddConsole());
+            services.AddLogging(builder =>
+            {
+                string logsDirectory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ClipPocketWin",
+                    "logs");
+                string logFilePath = Path.Combine(logsDirectory, "app.log");
+
+                builder.AddConsole();
+                builder.AddProvider(new FileLoggerProvider(logFilePath));
+            });
             services.AddClipPocketInfrastructure();
             services.AddClipPocketApplication();
             services.AddClipPocketPresentationRuntime();

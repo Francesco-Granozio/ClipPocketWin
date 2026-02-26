@@ -129,6 +129,7 @@ public sealed class PollingGlobalHotkeyService : IGlobalHotkeyService, IDisposab
         try
         {
             using PeriodicTimer timer = new(_pollingInterval);
+            ShortcutScanState? previousState = null;
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 KeyboardShortcut shortcut;
@@ -137,9 +138,33 @@ public sealed class PollingGlobalHotkeyService : IGlobalHotkeyService, IDisposab
                     shortcut = _shortcut;
                 }
 
-                bool isPressed = IsShortcutPressed(shortcut);
+                ShortcutScanState state = ReadShortcutState(shortcut);
+                if (previousState is null || !previousState.Value.Equals(state))
+                {
+                    string missingModifiers = GetMissingModifiersDescription(shortcut, state);
+                    _logger.LogInformation(
+                        "Hotkey state {Shortcut} (vk=0x{VirtualKey:X2}): ctrl={Ctrl}, alt={Alt}, shift={Shift}, winL={LeftWin}, winR={RightWin}, target={Target}, oem1={Oem1}, oem3={Oem3}, modifiersMatch={ModifiersMatch}, match={Match}, missing={Missing}",
+                        shortcut.DisplayString,
+                        state.TargetKeyCode,
+                        state.ControlPressed,
+                        state.AltPressed,
+                        state.ShiftPressed,
+                        state.LeftWindowsPressed,
+                        state.RightWindowsPressed,
+                        state.TargetPressed,
+                        state.Oem1Pressed,
+                        state.Oem3Pressed,
+                        state.ModifiersMatch,
+                        state.IsMatch,
+                        missingModifiers);
+
+                    previousState = state;
+                }
+
+                bool isPressed = state.IsMatch;
                 if (isPressed && !_wasPressed)
                 {
+                    _logger.LogInformation("Hotkey matched -> firing event for {Shortcut}", shortcut.DisplayString);
                     HotkeyPressed?.Invoke(this, EventArgs.Empty);
                 }
 
@@ -155,34 +180,105 @@ public sealed class PollingGlobalHotkeyService : IGlobalHotkeyService, IDisposab
         }
     }
 
-    private static bool IsShortcutPressed(KeyboardShortcut shortcut)
+    private static ShortcutScanState ReadShortcutState(KeyboardShortcut shortcut)
     {
-        if (!AreModifiersPressed(shortcut.Modifiers))
+        bool controlPressed = IsKeyPressed(VkControl);
+        bool altPressed = IsKeyPressed(VkMenu);
+        bool shiftPressed = IsKeyPressed(VkShift);
+        bool leftWindowsPressed = IsKeyPressed(VkLWin);
+        bool rightWindowsPressed = IsKeyPressed(VkRWin);
+        bool oem1Pressed = IsKeyPressed(VkOem1);
+        bool oem3Pressed = IsKeyPressed(VkOem3);
+        bool targetPressed = ReadTargetKeyPressed(shortcut, oem1Pressed, oem3Pressed, out uint targetKeyCode);
+
+        bool modifiersMatch = AreModifiersPressed(
+            shortcut.Modifiers,
+            controlPressed,
+            altPressed,
+            shiftPressed,
+            leftWindowsPressed,
+            rightWindowsPressed);
+
+        bool isMatch = modifiersMatch && targetPressed;
+        return new ShortcutScanState(
+            controlPressed,
+            altPressed,
+            shiftPressed,
+            leftWindowsPressed,
+            rightWindowsPressed,
+            targetPressed,
+            oem1Pressed,
+            oem3Pressed,
+            modifiersMatch,
+            isMatch,
+            targetKeyCode);
+    }
+
+    private static bool ReadTargetKeyPressed(KeyboardShortcut shortcut, bool oem1Pressed, bool oem3Pressed, out uint targetKeyCode)
+    {
+        targetKeyCode = shortcut.KeyCode;
+
+        if (shortcut.KeyCode == (uint)VkOem1)
         {
+            if (oem1Pressed)
+            {
+                targetKeyCode = (uint)VkOem1;
+                return true;
+            }
+
+            if (oem3Pressed)
+            {
+                targetKeyCode = (uint)VkOem3;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (shortcut.KeyCode == (uint)VkOem3)
+        {
+            if (oem3Pressed)
+            {
+                targetKeyCode = (uint)VkOem3;
+                return true;
+            }
+
+            if (oem1Pressed)
+            {
+                targetKeyCode = (uint)VkOem1;
+                return true;
+            }
+
             return false;
         }
 
         return IsKeyPressed((int)shortcut.KeyCode);
     }
 
-    private static bool AreModifiersPressed(ShortcutModifiers modifiers)
+    private static bool AreModifiersPressed(
+        ShortcutModifiers modifiers,
+        bool controlPressed,
+        bool altPressed,
+        bool shiftPressed,
+        bool leftWindowsPressed,
+        bool rightWindowsPressed)
     {
-        if (modifiers.HasFlag(ShortcutModifiers.Control) && !IsKeyPressed(VkControl))
+        if (modifiers.HasFlag(ShortcutModifiers.Control) && !controlPressed)
         {
             return false;
         }
 
-        if (modifiers.HasFlag(ShortcutModifiers.Alt) && !IsKeyPressed(VkMenu))
+        if (modifiers.HasFlag(ShortcutModifiers.Alt) && !altPressed)
         {
             return false;
         }
 
-        if (modifiers.HasFlag(ShortcutModifiers.Shift) && !IsKeyPressed(VkShift))
+        if (modifiers.HasFlag(ShortcutModifiers.Shift) && !shiftPressed)
         {
             return false;
         }
 
-        if (modifiers.HasFlag(ShortcutModifiers.Windows) && !IsWindowsKeyPressed())
+        if (modifiers.HasFlag(ShortcutModifiers.Windows) && !(leftWindowsPressed || rightWindowsPressed))
         {
             return false;
         }
@@ -190,9 +286,38 @@ public sealed class PollingGlobalHotkeyService : IGlobalHotkeyService, IDisposab
         return true;
     }
 
-    private static bool IsWindowsKeyPressed()
+    private static string GetMissingModifiersDescription(KeyboardShortcut shortcut, ShortcutScanState state)
     {
-        return IsKeyPressed(VkLWin) || IsKeyPressed(VkRWin);
+        string missing = string.Empty;
+
+        if (shortcut.Modifiers.HasFlag(ShortcutModifiers.Control) && !state.ControlPressed)
+        {
+            missing = AppendMissingModifier(missing, "Ctrl");
+        }
+
+        if (shortcut.Modifiers.HasFlag(ShortcutModifiers.Alt) && !state.AltPressed)
+        {
+            missing = AppendMissingModifier(missing, "Alt");
+        }
+
+        if (shortcut.Modifiers.HasFlag(ShortcutModifiers.Shift) && !state.ShiftPressed)
+        {
+            missing = AppendMissingModifier(missing, "Shift");
+        }
+
+        if (shortcut.Modifiers.HasFlag(ShortcutModifiers.Windows) && !(state.LeftWindowsPressed || state.RightWindowsPressed))
+        {
+            missing = AppendMissingModifier(missing, "Win");
+        }
+
+        return string.IsNullOrEmpty(missing) ? "none" : missing;
+    }
+
+    private static string AppendMissingModifier(string current, string modifier)
+    {
+        return string.IsNullOrEmpty(current)
+            ? modifier
+            : current + "," + modifier;
     }
 
     private static bool IsKeyPressed(int vk)
@@ -206,6 +331,21 @@ public sealed class PollingGlobalHotkeyService : IGlobalHotkeyService, IDisposab
     private const int VkMenu = 0x12;
     private const int VkLWin = 0x5B;
     private const int VkRWin = 0x5C;
+    private const int VkOem1 = 0xBA;
+    private const int VkOem3 = 0xC0;
+
+    private readonly record struct ShortcutScanState(
+        bool ControlPressed,
+        bool AltPressed,
+        bool ShiftPressed,
+        bool LeftWindowsPressed,
+        bool RightWindowsPressed,
+        bool TargetPressed,
+        bool Oem1Pressed,
+        bool Oem3Pressed,
+        bool ModifiersMatch,
+        bool IsMatch,
+        uint TargetKeyCode);
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);

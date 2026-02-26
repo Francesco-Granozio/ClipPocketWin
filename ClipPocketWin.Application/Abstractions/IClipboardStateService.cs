@@ -25,6 +25,12 @@ public interface IClipboardStateService
 
     Task<Result> DeleteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<Result> SelectClipboardItemAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<Result> CopyClipboardItemAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<Result> PasteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default);
+
     Task<Result> ClearClipboardHistoryAsync(CancellationToken cancellationToken = default);
 
     Task<Result> TogglePinAsync(ClipboardItem item, CancellationToken cancellationToken = default);

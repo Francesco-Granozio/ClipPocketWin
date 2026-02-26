@@ -14,6 +14,7 @@ public sealed class ClipboardStateService : IClipboardStateService
     private readonly IPinnedClipboardRepository _pinnedRepository;
     private readonly ISnippetRepository _snippetRepository;
     private readonly ISettingsRepository _settingsRepository;
+    private readonly IAutoPasteService _autoPasteService;
     private readonly ILogger<ClipboardStateService> _logger;
     private readonly object _syncRoot = new();
 
@@ -29,6 +30,7 @@ public sealed class ClipboardStateService : IClipboardStateService
         IPinnedClipboardRepository pinnedRepository,
         ISnippetRepository snippetRepository,
         ISettingsRepository settingsRepository,
+        IAutoPasteService autoPasteService,
         ILogger<ClipboardStateService> logger)
     {
         _clipboardMonitor = clipboardMonitor;
@@ -36,6 +38,7 @@ public sealed class ClipboardStateService : IClipboardStateService
         _pinnedRepository = pinnedRepository;
         _snippetRepository = snippetRepository;
         _settingsRepository = settingsRepository;
+        _autoPasteService = autoPasteService;
         _logger = logger;
     }
 
@@ -154,6 +157,11 @@ public sealed class ClipboardStateService : IClipboardStateService
                 return Result.Success();
             }
 
+            if (IsExcludedBySourceApplication(item, _settings))
+            {
+                return Result.Success();
+            }
+
             if (_clipboardItems.Any(existing => existing.IsEquivalentContent(item)))
             {
                 return Result.Success();
@@ -188,7 +196,13 @@ public sealed class ClipboardStateService : IClipboardStateService
             }
         }
 
-        Result startResult = await _clipboardMonitor.StartAsync(HandleClipboardItemCapturedAsync, cancellationToken);
+        bool captureRichTextEnabled;
+        lock (_syncRoot)
+        {
+            captureRichTextEnabled = _settings.CaptureRichText;
+        }
+
+        Result startResult = await _clipboardMonitor.StartAsync(HandleClipboardItemCapturedAsync, captureRichTextEnabled, cancellationToken);
         if (startResult.IsFailure)
         {
             return Result.Failure(new Error(
@@ -264,6 +278,62 @@ public sealed class ClipboardStateService : IClipboardStateService
         return Result.Success();
     }
 
+    public async Task<Result> SelectClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ClipboardItem? item = ResolveClipboardItem(id);
+        if (item is null)
+        {
+            return Result.Failure(new Error(ErrorCode.ClipboardHistoryItemNotFound, $"Clipboard item with id '{id}' was not found."));
+        }
+
+        bool autoPasteEnabled;
+        lock (_syncRoot)
+        {
+            autoPasteEnabled = _settings.AutoPasteEnabled;
+        }
+
+        Result setClipboardResult = await _autoPasteService.SetClipboardContentAsync(item, cancellationToken);
+        if (setClipboardResult.IsFailure)
+        {
+            return setClipboardResult;
+        }
+
+        if (!autoPasteEnabled)
+        {
+            return Result.Success();
+        }
+
+        Result pasteResult = await _autoPasteService.PasteToPreviousWindowAsync(cancellationToken);
+        if (pasteResult.IsFailure)
+        {
+            return pasteResult;
+        }
+
+        return Result.Success();
+    }
+
+    public async Task<Result> CopyClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ClipboardItem? item = ResolveClipboardItem(id);
+        if (item is null)
+        {
+            return Result.Failure(new Error(ErrorCode.ClipboardHistoryItemNotFound, $"Clipboard item with id '{id}' was not found."));
+        }
+
+        return await _autoPasteService.SetClipboardContentAsync(item, cancellationToken);
+    }
+
+    public async Task<Result> PasteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        Result copyResult = await CopyClipboardItemAsync(id, cancellationToken);
+        if (copyResult.IsFailure)
+        {
+            return copyResult;
+        }
+
+        return await _autoPasteService.PasteToPreviousWindowAsync(cancellationToken);
+    }
+
     public async Task<Result> ClearClipboardHistoryAsync(CancellationToken cancellationToken = default)
     {
         lock (_syncRoot)
@@ -323,9 +393,11 @@ public sealed class ClipboardStateService : IClipboardStateService
         }
 
         bool encryptionChanged;
+        bool captureRichTextChanged;
         lock (_syncRoot)
         {
             encryptionChanged = _settings.EncryptHistory != settings.EncryptHistory;
+            captureRichTextChanged = _settings.CaptureRichText != settings.CaptureRichText;
             _settings = settings;
         }
 
@@ -341,6 +413,18 @@ public sealed class ClipboardStateService : IClipboardStateService
             if (persistResult.IsFailure)
             {
                 return persistResult;
+            }
+        }
+
+        if (captureRichTextChanged)
+        {
+            Result richTextModeResult = await _clipboardMonitor.UpdateCaptureRichTextAsync(settings.CaptureRichText, cancellationToken);
+            if (richTextModeResult.IsFailure)
+            {
+                return Result.Failure(new Error(
+                    ErrorCode.InvalidOperation,
+                    "Failed to update clipboard capture rich text mode.",
+                    richTextModeResult.Error?.Exception));
             }
         }
 
@@ -381,8 +465,47 @@ public sealed class ClipboardStateService : IClipboardStateService
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private static bool IsExcludedBySourceApplication(ClipboardItem item, ClipPocketSettings settings)
+    {
+        if (settings.ExcludedAppIds.Count == 0 || string.IsNullOrWhiteSpace(item.SourceApplicationIdentifier))
+        {
+            return false;
+        }
+
+        string sourceId = item.SourceApplicationIdentifier.Trim();
+        string sourceIdWithoutExtension = sourceId.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? sourceId[..^4]
+            : sourceId;
+
+        foreach (string excluded in settings.ExcludedAppIds)
+        {
+            if (string.IsNullOrWhiteSpace(excluded))
+            {
+                continue;
+            }
+
+            string candidate = excluded.Trim();
+            if (string.Equals(candidate, sourceId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate, sourceIdWithoutExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private Task<Result> HandleClipboardItemCapturedAsync(ClipboardItem item)
     {
         return AddClipboardItemAsync(item);
+    }
+
+    private ClipboardItem? ResolveClipboardItem(Guid id)
+    {
+        lock (_syncRoot)
+        {
+            return _clipboardItems.FirstOrDefault(x => x.Id == id)
+                ?? _pinnedItems.Select(x => x.OriginalItem).FirstOrDefault(x => x.Id == id);
+        }
     }
 }

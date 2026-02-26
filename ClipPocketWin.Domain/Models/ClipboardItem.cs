@@ -10,6 +10,8 @@ public sealed record ClipboardItem
 
     public string? SourceApplicationIdentifier { get; init; }
 
+    public string? SourceApplicationExecutablePath { get; init; }
+
     public string? TextContent { get; init; }
 
     public byte[]? BinaryContent { get; init; }

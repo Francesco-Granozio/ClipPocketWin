@@ -31,13 +31,88 @@
   - polling global hotkey service wired to panel toggle,
   - edge monitor service wired to panel show/hide with `AutoShowDelay`/`AutoHideDelay`,
   - panel visibility control service (`show/hide/toggle`) attached to `MainWindow` handle,
-  - tray currently runs in degraded mode with explicit `TrayStartFailed` until native tray adapter is implemented.
+  - native Windows tray service with icon and menu actions (`Show`, `Hide`, `Toggle`, `Exit`).
+- Added runtime source-app aware capture metadata and exclusion filtering:
+  - clipboard capture now records foreground process identifier in `SourceApplicationIdentifier`,
+  - `ClipboardStateService` skips persistence for captures coming from apps listed in `ClipPocketSettings.ExcludedAppIds`.
+- Added auto-paste runtime pipeline:
+  - new `WindowsAutoPasteService` writes selected payloads (text + DIB image) to clipboard and can restore focus to the previously active app,
+  - `ClipboardStateService.SelectClipboardItemAsync` executes selection copy and optional simulated `Ctrl+V` when `AutoPasteEnabled=true`,
+  - `MainWindow` clipboard cards are now wired to selection on tap.
+- Added click-outside runtime behavior:
+  - app host hides panel on deactivation,
+  - `AppRuntimeService` now includes a global outside-click monitor loop that hides panel when mouse click starts outside panel bounds.
+- Started UI migration from static mock cards to state-driven cards:
+  - main card list is now bound to `IClipboardStateService` snapshots (pinned + history) with live refresh on `StateChanged`.
+- Completed first operational parity slice for real panel interactions:
+  - live `Search` + type filtering now run against real clipboard state,
+  - section tabs `Pinned` / `Recent` / `History` now project real data with live counters,
+  - card context actions now support `Copy`, `Pin/Unpin`, `Delete`, `Clear History`.
+- Aligned card visual language with original repository by type:
+  - card accents and icon tones now follow the same per-type direction used in Swift (`url=blue`, `email=cyan`, `phone=green`, `file=orange`, etc.),
+  - color cards now derive accent directly from copied hex color when available.
+- Added source-app icon parity and live header timing for cards:
+  - cards now show source application icon in the top-left header area with runtime icon cache/fallback,
+  - card header keeps format type top-right and relative capture time below,
+  - relative time label updates every second while panel is open.
+- Fixed timer UX regression in card list:
+  - relative time updates now refresh only `TimestampLabel` in-place,
+  - no per-second full card list rebuild, avoiding flicker and preserving horizontal scroll position.
+- Improved image card rendering parity:
+  - image clipboard items now render real thumbnail previews in cards,
+  - image preview is constrained to card bounds and scaled to fit,
+  - textual fallback (`"Image content"`) is used only when preview decode is unavailable.
+- Added excluded applications management UI in WinUI:
+  - new `Excluded Apps` editor updates `ClipPocketSettings.ExcludedAppIds` and persists via `SaveSettingsAsync`.
+- Fixed rich text over-detection bug in Windows monitor:
+  - rich text capture now follows Swift parity logic (`mixed content` OR `significant formatting`),
+  - plain text copies no longer get forced to `RichText` by default clipboard format presence,
+  - `CaptureRichText` is now propagated to runtime monitor updates.
+- Improved panel show behavior on multi-monitor setups:
+  - `WindowPanelService` now repositions panel to the active monitor (cursor monitor) before show, so hotkey/tray opens consistently across screens.
+- Updated text type labeling heuristics to match Swift `detectContentType` flow and ordering.
+- Updated default spawn shortcut:
+  - default global shortcut is now `Ctrl+ò` (as requested for Windows/IT keyboard layout).
+  - shortcut migration logic was removed: startup now uses persisted settings as-is, and default applies only when settings are reset.
+- Reset local settings store to force clean defaults:
+  - removed persisted `settings.json` from app local cache so next launch rehydrates defaults (including `Ctrl+ò`).
+- Reduced startup first-chance process exceptions:
+  - removed `Process.MainModule` fallback lookup in source icon resolver for items without executable path,
+  - foreground process executable resolution in `WindowsClipboardMonitor` now uses Win32 `OpenProcess + QueryFullProcessImageName`.
+- Added hotkey diagnostics logging:
+  - `PollingGlobalHotkeyService` now logs transition snapshots for modifier/target key states,
+  - when the shortcut matches, it logs explicit event firing (`Hotkey matched -> firing event ...`).
+- Added OEM key fallback for `Ctrl+ò` detection:
+  - hotkey polling now accepts both OEM virtual keys `0xBA` and `0xC0` for the target key,
+  - logs now include raw `oem1`/`oem3` state to diagnose keyboard-layout differences.
+- Added persistent file logging sink:
+  - application logs are now written to `%LocalAppData%\\ClipPocketWin\\logs\\app.log` in addition to console output.
+- Refined card interaction model to match Ditto-like flow:
+  - double-clicking a card now performs copy + direct paste to the previously focused target app,
+  - right-click `Copy` now performs clipboard copy only (no direct paste).
+- Hardened double-click paste reliability and diagnostics:
+  - `MainWindow` now hides panel before invoking paste and logs the full double-click path (`start -> hide -> paste`),
+  - `WindowsAutoPasteService` now logs target window handoff, retries foreground activation checks, and then dispatches `Ctrl+V` with explicit success/fallback logs.
+- Fixed Win32 input dispatch failure in auto-paste:
+  - corrected `SendInput` interop struct/union layout in `WindowsAutoPasteService` to match native `INPUT` size,
+  - resolves runtime failure `Failed to send Ctrl+V input sequence. Win32Error=87` seen during double-click paste.
+- Added quick actions subset in card context menu:
+  - `Save to File`, `Copy as Base64`, `URL Encode`, `URL Decode`.
+- Added external drag-and-drop from cards:
+  - text items drag as text payload,
+  - file/image items drag as real file payloads (no internal clipboard rewrite during drag).
 - Added `docs/PARITY_MATRIX.md` with full Source->Windows parity tracking, including pre-existing implemented scope and pending items (backup excluded).
 
+## SAL
+- implemented: 23
+- partial: 6
+- not implemented: 6
+- intentionally excluded: 1
+- strict SAL: 65.71%
+- weighted SAL (partial=0.5): 74.29%
+
 ## Pending (next milestone)
-- Native tray icon integration.
-- Floating panel runtime refinements (click-outside hide and parity-level behavior).
-- Full MVVM UI migration from static prototype to state-driven views.
+- Full MVVM UI migration (snippets/settings full flows and advanced interactions).
 - Settings UI binding to `ClipPocketSettings` and persistence commands.
-- Quick actions (transformations, export, QR, share), onboarding, update checker.
+- Remaining quick-action backlog beyond current subset (QR/share and full transformation catalog), onboarding, update checker.
 - Test projects (unit + integration) and parity validation suite.
