@@ -68,7 +68,13 @@ public sealed class WindowPanelService : IWindowPanelService
     public Task<Result> ShowAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(ApplyVisibility(visible: true));
+        return Task.FromResult(ApplyVisibility(visible: true, showPlacementMode: ShowPlacementMode.ActiveMonitorBottomCenter));
+    }
+
+    public Task<Result> ShowAtPointerAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(ApplyVisibility(visible: true, showPlacementMode: ShowPlacementMode.PointerCentered));
     }
 
     public Task<Result> HideAsync(CancellationToken cancellationToken = default)
@@ -110,7 +116,7 @@ public sealed class WindowPanelService : IWindowPanelService
         }
     }
 
-    private Result ApplyVisibility(bool visible)
+    private Result ApplyVisibility(bool visible, ShowPlacementMode showPlacementMode = ShowPlacementMode.ActiveMonitorBottomCenter)
     {
         lock (_syncRoot)
         {
@@ -122,7 +128,17 @@ public sealed class WindowPanelService : IWindowPanelService
             if (visible)
             {
                 CaptureLastExternalForegroundWindowHandle();
-                _ = MoveWindowToActiveMonitorBounds();
+
+                bool positioned = showPlacementMode switch
+                {
+                    ShowPlacementMode.PointerCentered => MoveWindowNearPointerWithinMonitor(),
+                    _ => MoveWindowToActiveMonitorBounds()
+                };
+
+                if (!positioned)
+                {
+                    _logger.LogDebug("Panel positioning before show failed. PlacementMode={PlacementMode}", showPlacementMode);
+                }
             }
 
             bool commandResult = ShowWindow(_windowHandle, visible ? ShowCommand : HideCommand);
@@ -193,6 +209,60 @@ public sealed class WindowPanelService : IWindowPanelService
             0,
             0,
             SetWindowPosNoSize | SetWindowPosNoZOrder | SetWindowPosNoActivate);
+    }
+
+    private bool MoveWindowNearPointerWithinMonitor()
+    {
+        if (!GetCursorPos(out Point cursorPosition))
+        {
+            return false;
+        }
+
+        nint monitor = MonitorFromPoint(cursorPosition, MonitorDefaultToNearest);
+        if (monitor == nint.Zero)
+        {
+            return false;
+        }
+
+        MonitorInfo monitorInfo = new()
+        {
+            Size = Marshal.SizeOf<MonitorInfo>()
+        };
+
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            return false;
+        }
+
+        if (!GetWindowRect(_windowHandle, out Rect windowRect))
+        {
+            return false;
+        }
+
+        int windowWidth = Math.Max(1, windowRect.Right - windowRect.Left);
+        int windowHeight = Math.Max(1, windowRect.Bottom - windowRect.Top);
+
+        Rect workArea = monitorInfo.Work;
+        int targetX = cursorPosition.X - (windowWidth / 2);
+        int targetY = cursorPosition.Y - (windowHeight / 2);
+
+        targetX = Math.Clamp(targetX, workArea.Left, Math.Max(workArea.Left, workArea.Right - windowWidth));
+        targetY = Math.Clamp(targetY, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - windowHeight));
+
+        return SetWindowPos(
+            _windowHandle,
+            nint.Zero,
+            targetX,
+            targetY,
+            0,
+            0,
+            SetWindowPosNoSize | SetWindowPosNoZOrder | SetWindowPosNoActivate);
+    }
+
+    private enum ShowPlacementMode
+    {
+        ActiveMonitorBottomCenter,
+        PointerCentered
     }
 
     [DllImport("user32.dll")]

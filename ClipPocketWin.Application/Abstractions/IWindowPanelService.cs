@@ -12,6 +12,8 @@ public interface IWindowPanelService
 
     Task<Result> ShowAsync(CancellationToken cancellationToken = default);
 
+    Task<Result> ShowAtPointerAsync(CancellationToken cancellationToken = default);
+
     Task<Result> HideAsync(CancellationToken cancellationToken = default);
 
     Task<Result> ToggleAsync(CancellationToken cancellationToken = default);

@@ -309,7 +309,7 @@ public sealed class AppRuntimeService : IAppRuntimeService
 
     private async void GlobalHotkeyService_HotkeyPressed(object? sender, EventArgs e)
     {
-        await SafeToggleAsync("hotkey");
+        await SafeHotkeyToggleAsync();
     }
 
     private async void TrayService_ToggleRequested(object? sender, EventArgs e)
@@ -353,6 +353,18 @@ public sealed class AppRuntimeService : IAppRuntimeService
         if (toggleResult.IsFailure)
         {
             _logger.LogWarning(toggleResult.Error?.Exception, "Panel toggle failed ({Source}). Code {ErrorCode}: {Message}", source, toggleResult.Error?.Code, toggleResult.Error?.Message);
+        }
+    }
+
+    private async Task SafeHotkeyToggleAsync()
+    {
+        Result operationResult = _windowPanelService.IsVisible
+            ? await _windowPanelService.HideAsync()
+            : await _windowPanelService.ShowAtPointerAsync();
+
+        if (operationResult.IsFailure)
+        {
+            _logger.LogWarning(operationResult.Error?.Exception, "Panel toggle failed (hotkey). Code {ErrorCode}: {Message}", operationResult.Error?.Code, operationResult.Error?.Message);
         }
     }
 
