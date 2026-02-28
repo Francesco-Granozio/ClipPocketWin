@@ -15,8 +15,54 @@
                 <Setter Property="Foreground" Value="#AAFFFFFF" />
                 <Setter Property="FontFamily" Value="{StaticResource AppleLikeFontFamily}" />
                 <Setter Property="FontSize" Value="12" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <ContentPresenter
+                                    Margin="{TemplateBinding Padding}"
+                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                    Content="{TemplateBinding Content}"
+                                    ContentTemplate="{TemplateBinding ContentTemplate}" />
+                            </Border>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver" />
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="RootBorder"
+                                                Storyboard.TargetProperty="Opacity"
+                                                To="0.9"
+                                                Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="RootBorder"
+                                                Storyboard.TargetProperty="Opacity"
+                                                To="0.45"
+                                                Duration="0" />
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
-            <Style x:Key="GlassIconChipButtonStyle" TargetType="Button" BasedOn="{StaticResource GlassChipButtonStyle}">
+            <Style
+                x:Key="GlassIconChipButtonStyle"
+                BasedOn="{StaticResource GlassChipButtonStyle}"
+                TargetType="Button">
                 <Setter Property="Width" Value="32" />
                 <Setter Property="Height" Value="32" />
                 <Setter Property="Padding" Value="0" />
@@ -62,14 +108,16 @@
                             x:Name="SearchTextBox"
                             Grid.Column="1"
                             Height="30"
+                            Margin="0,7,0,0"
                             VerticalAlignment="Center"
-                            PlaceholderText="Search clipboard..."
-                            TextChanged="SearchTextBox_TextChanged"
+                            VerticalContentAlignment="Center"
                             Background="Transparent"
                             BorderBrush="Transparent"
                             BorderThickness="0"
+                            FontFamily="{StaticResource AppleLikeFontFamily}"
                             Foreground="#F0FFFFFF"
-                            FontFamily="{StaticResource AppleLikeFontFamily}">
+                            PlaceholderText="Search clipboard..."
+                            TextChanged="SearchTextBox_TextChanged">
                             <TextBox.Resources>
                                 <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent" />
                                 <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
@@ -84,51 +132,68 @@
 
                 <StackPanel
                     Grid.Column="1"
+                    Margin="10,0,0,0"
                     Orientation="Horizontal"
-                    Spacing="6"
-                    Margin="10,0,0,0">
+                    Spacing="6">
                     <Button
                         x:Name="PinnedTabButton"
-                        Style="{StaticResource GlassChipButtonStyle}"
                         Click="SectionButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
                         Tag="Pinned">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE718;" />
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE718;" />
                             <TextBlock x:Name="PinnedTabLabel" Text="Pinned (0)" />
                         </StackPanel>
                     </Button>
                     <Button
                         x:Name="RecentTabButton"
-                        Style="{StaticResource GlassChipButtonStyle}"
                         Click="SectionButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
                         Tag="Recent">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE823;" />
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE823;" />
                             <TextBlock x:Name="RecentTabLabel" Text="Recent (0)" />
                         </StackPanel>
                     </Button>
                     <Button
                         x:Name="HistoryTabButton"
-                        Style="{StaticResource GlassChipButtonStyle}"
                         Click="SectionButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
                         Tag="History">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE81C;" />
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE81C;" />
                             <TextBlock x:Name="HistoryTabLabel" Text="History (0)" />
                         </StackPanel>
                     </Button>
                     <Button
-                        Style="{StaticResource GlassIconChipButtonStyle}"
                         Margin="4,0,0,0"
                         Click="SettingsButton_Click"
+                        Style="{StaticResource GlassIconChipButtonStyle}"
                         ToolTipService.ToolTip="Settings">
-                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#88FFFFFF" Glyph="&#xE713;" />
+                        <FontIcon
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="14"
+                            Foreground="#88FFFFFF"
+                            Glyph="&#xE713;" />
                     </Button>
                     <Button
-                        Style="{StaticResource GlassIconChipButtonStyle}"
                         Click="ClosePanelButton_Click"
+                        Style="{StaticResource GlassIconChipButtonStyle}"
                         ToolTipService.ToolTip="Close">
-                        <FontIcon FontFamily="Segoe Fluent Icons" FontSize="14" Foreground="#88FFFFFF" Glyph="&#xE711;" />
+                        <FontIcon
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="14"
+                            Foreground="#88FFFFFF"
+                            Glyph="&#xE711;" />
                     </Button>
                 </StackPanel>
             </Grid>
@@ -138,80 +203,157 @@
                 Margin="0,0,0,14"
                 HorizontalScrollBarVisibility="Hidden"
                 HorizontalScrollMode="Enabled"
-                VerticalScrollMode="Disabled"
                 VerticalScrollBarVisibility="Disabled"
+                VerticalScrollMode="Disabled"
                 ZoomMode="Disabled">
 
                 <StackPanel
                     x:Name="TypeFilterButtonsPanel"
                     Orientation="Horizontal"
                     Spacing="6">
-                        <Button x:Name="AllFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="All" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE8A9;" />
-                                <TextBlock Text="All" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="TextFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Text" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE8A4;" />
-                                <TextBlock Text="Text" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="RichTextFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="RichText" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE8D2;" />
-                                <TextBlock Text="Rich Text" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="CodeFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Code" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE943;" />
-                                <TextBlock Text="Code" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="UrlFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Url" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE71B;" />
-                                <TextBlock Text="URL" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="EmailFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Email" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE715;" />
-                                <TextBlock Text="Email" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="ImageFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Image" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xEB9F;" />
-                                <TextBlock Text="Image" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="FileFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="File" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE7C3;" />
-                                <TextBlock Text="File" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="ColorFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Color" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE790;" />
-                                <TextBlock Text="Color" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="JsonFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Json" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE9D5;" />
-                                <TextBlock Text="JSON" />
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="PhoneFilterButton" Style="{StaticResource GlassChipButtonStyle}" Tag="Phone" Click="TypeFilterButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon FontFamily="Segoe Fluent Icons" FontSize="12" Glyph="&#xE717;" />
-                                <TextBlock Text="Phone" />
-                            </StackPanel>
-                        </Button>
+                    <Button
+                        x:Name="AllFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="All">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE8A9;" />
+                            <TextBlock Text="All" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="TextFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Text">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE8A4;" />
+                            <TextBlock Text="Text" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="RichTextFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="RichText">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE8D2;" />
+                            <TextBlock Text="Rich Text" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="CodeFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Code">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE943;" />
+                            <TextBlock Text="Code" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="UrlFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Url">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE71B;" />
+                            <TextBlock Text="URL" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="EmailFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Email">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE715;" />
+                            <TextBlock Text="Email" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="ImageFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Image">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xEB9F;" />
+                            <TextBlock Text="Image" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="FileFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="File">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE7C3;" />
+                            <TextBlock Text="File" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="ColorFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Color">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE790;" />
+                            <TextBlock Text="Color" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="JsonFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Json">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE9D5;" />
+                            <TextBlock Text="JSON" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="PhoneFilterButton"
+                        Click="TypeFilterButton_Click"
+                        Style="{StaticResource GlassChipButtonStyle}"
+                        Tag="Phone">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="12"
+                                Glyph="&#xE717;" />
+                            <TextBlock Text="Phone" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
             </ScrollViewer>
@@ -219,15 +361,15 @@
             <Grid Grid.Row="2">
                 <ListView
                     x:Name="ClipboardItemsListView"
+                    Padding="0,0,0,0"
+                    HorizontalAlignment="Stretch"
                     Background="Transparent"
                     BorderThickness="0"
-                    HorizontalAlignment="Stretch"
                     IsItemClickEnabled="False"
-                    Padding="6,6,6,6"
-                    ScrollViewer.HorizontalScrollMode="Enabled"
                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                    ScrollViewer.VerticalScrollMode="Disabled"
+                    ScrollViewer.HorizontalScrollMode="Enabled"
                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    ScrollViewer.VerticalScrollMode="Disabled"
                     SelectionMode="None"
                     Visibility="Collapsed">
                     <ListView.ItemsPanel>
@@ -238,15 +380,15 @@
                     <ListView.ItemTemplate>
                         <DataTemplate>
                             <Border
-                                Width="220"
-                                Height="220"
+                                Width="230"
+                                Height="230"
                                 Margin="0,0,10,0"
+                                Padding="0"
                                 Background="{Binding CardBackgroundBrush}"
                                 BorderBrush="#33FFFFFF"
                                 BorderThickness="1"
                                 CanDrag="True"
                                 CornerRadius="14"
-                                Padding="0"
                                 DoubleTapped="ClipboardCard_DoubleTapped"
                                 DragStarting="ClipboardCard_DragStarting"
                                 PointerEntered="Card_PointerEntered"
@@ -264,9 +406,9 @@
                                     </Grid.RowDefinitions>
                                     <Border
                                         Grid.Row="0"
+                                        Padding="12,10"
                                         Background="{Binding HeaderBackgroundBrush}"
-                                        CornerRadius="14,14,0,0"
-                                        Padding="12,10">
+                                        CornerRadius="14,14,0,0">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -289,12 +431,12 @@
                                                         Source="{Binding SourceAppIcon}"
                                                         Visibility="{Binding SourceIconVisibility}" />
                                                     <FontIcon
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
                                                         FontFamily="Segoe Fluent Icons"
                                                         FontSize="16"
                                                         Foreground="{Binding IconForegroundBrush}"
                                                         Glyph="{Binding IconGlyph}"
-                                                        HorizontalAlignment="Center"
-                                                        VerticalAlignment="Center"
                                                         Visibility="{Binding SourceIconFallbackVisibility}" />
                                                 </Grid>
                                             </Border>
@@ -313,59 +455,57 @@
                                             </StackPanel>
                                             <TextBlock
                                                 Grid.Column="2"
+                                                VerticalAlignment="Top"
                                                 FontFamily="{StaticResource AppleLikeFontFamily}"
                                                 FontSize="10"
                                                 Foreground="#BFFFE08A"
-                                                Text="{Binding PinLabel}"
-                                                VerticalAlignment="Top" />
+                                                Text="{Binding PinLabel}" />
                                         </Grid>
                                     </Border>
                                     <Border
                                         Grid.Row="1"
+                                        Padding="12,10"
                                         Background="{Binding BodyBackgroundBrush}"
-                                        CornerRadius="0,0,14,14"
-                                        Padding="12,10">
+                                        CornerRadius="0,0,14,14">
                                         <Grid>
                                             <Border
-                                                CornerRadius="8"
                                                 HorizontalAlignment="Stretch"
                                                 VerticalAlignment="Stretch"
+                                                CornerRadius="8"
                                                 Visibility="{Binding ImagePreviewVisibility}">
-                                                <Image
-                                                    Source="{Binding PreviewImage}"
-                                                    Stretch="Uniform" />
+                                                <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
                                             </Border>
                                             <Grid Visibility="{Binding ColorPreviewVisibility}">
                                                 <TextBlock
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
                                                     FontFamily="{StaticResource AppleLikeFontFamily}"
                                                     FontSize="30"
                                                     FontWeight="Bold"
                                                     Foreground="{Binding ColorPreviewForegroundBrush}"
-                                                    HorizontalAlignment="Center"
                                                     Text="{Binding ColorPreviewText}"
                                                     TextAlignment="Center"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    VerticalAlignment="Center" />
+                                                    TextTrimming="CharacterEllipsis" />
                                             </Grid>
                                             <StackPanel
-                                                Spacing="6"
                                                 VerticalAlignment="Top"
+                                                Spacing="6"
                                                 Visibility="{Binding FilePreviewVisibility}">
                                                 <Grid>
                                                     <Image
                                                         Width="42"
                                                         Height="42"
                                                         HorizontalAlignment="Left"
-                                                        Source="{Binding FileIcon}"
                                                         VerticalAlignment="Center"
+                                                        Source="{Binding FileIcon}"
                                                         Visibility="{Binding FileIconVisibility}" />
                                                     <FontIcon
+                                                        HorizontalAlignment="Left"
+                                                        VerticalAlignment="Center"
                                                         FontFamily="Segoe Fluent Icons"
                                                         FontSize="36"
                                                         Foreground="#FFE4EAF8"
                                                         Glyph="{Binding FileGlyph}"
-                                                        HorizontalAlignment="Left"
-                                                        VerticalAlignment="Center"
                                                         Visibility="{Binding FileGlyphVisibility}" />
                                                 </Grid>
                                                 <TextBlock
@@ -389,13 +529,13 @@
                                                     Text="{Binding FileSize}" />
                                             </StackPanel>
                                             <RichTextBlock
+                                                MaxHeight="142"
+                                                DataContextChanged="CodePreview_DataContextChanged"
                                                 FontFamily="Consolas"
                                                 FontSize="12"
                                                 Foreground="#FFDDE7FF"
                                                 IsTextSelectionEnabled="False"
-                                                DataContextChanged="CodePreview_DataContextChanged"
                                                 Loaded="CodePreview_Loaded"
-                                                MaxHeight="142"
                                                 TextWrapping="WrapWholeWords"
                                                 Visibility="{Binding CodePreviewVisibility}" />
                                             <TextBlock
@@ -418,34 +558,37 @@
                 <Border
                     x:Name="EmptyStateContainer"
                     Padding="18,16"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
                     Background="#14000000"
                     BorderBrush="#33FFFFFF"
                     BorderThickness="1"
                     CornerRadius="14"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
                     Visibility="Collapsed">
-                    <StackPanel Width="220" Spacing="8" HorizontalAlignment="Center">
+                    <StackPanel
+                        Width="220"
+                        HorizontalAlignment="Center"
+                        Spacing="8">
                         <FontIcon
                             x:Name="EmptyStateIcon"
+                            HorizontalAlignment="Center"
                             FontFamily="Segoe Fluent Icons"
                             FontSize="50"
-                            Foreground="#8CD6E6FF"
-                            HorizontalAlignment="Center" />
+                            Foreground="#8CD6E6FF" />
                         <TextBlock
                             x:Name="EmptyStateTitle"
+                            HorizontalAlignment="Center"
                             FontFamily="{StaticResource AppleLikeFontFamily}"
                             FontSize="28"
                             FontWeight="SemiBold"
                             Foreground="#E6FFFFFF"
-                            HorizontalAlignment="Center"
                             TextAlignment="Center" />
                         <TextBlock
                             x:Name="EmptyStateSubtitle"
+                            HorizontalAlignment="Center"
                             FontFamily="{StaticResource AppleLikeFontFamily}"
                             FontSize="12"
                             Foreground="#A6FFFFFF"
-                            HorizontalAlignment="Center"
                             TextAlignment="Center"
                             TextWrapping="Wrap" />
                     </StackPanel>

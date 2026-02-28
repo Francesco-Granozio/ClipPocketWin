@@ -68,7 +68,7 @@ namespace ClipPocketWin
         private readonly ObservableCollection<ClipboardCardViewModel> _clipboardCards = [];
         private SettingsWindow? _settingsWindow;
         private string _searchText = string.Empty;
-        private ClipboardSection _selectedSection = ClipboardSection.Recent;
+        private ClipboardSection _selectedSection = ClipboardSection.History;
         private ClipboardItemType? _selectedTypeFilter;
         private DesktopAcrylicController? _acrylicController;
         private SystemBackdropConfiguration? _configurationSource;
