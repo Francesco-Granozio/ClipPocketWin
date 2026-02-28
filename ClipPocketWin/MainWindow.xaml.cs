@@ -45,8 +45,8 @@ namespace ClipPocketWin
         private const double LuminanceProtectionThreshold = 0.62;
         private const double LuminanceFallbackValue = 0.74;
         private const double LuminanceSmoothing = 0.62;
-        private const int SamplingPadding = 8;
-        private const int ReadabilityUpdateIntervalMs = 260;
+        private const int SamplingGridRows = 5;
+        private const int SamplingGridCols = 5;
         private const double CardHoverScale = 1.03;
         private const double CardHoverAnimationDurationMs = 120;
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
@@ -64,7 +64,7 @@ namespace ClipPocketWin
         private ClipboardItemType? _selectedTypeFilter;
         private DesktopAcrylicController? _acrylicController;
         private SystemBackdropConfiguration? _configurationSource;
-        private DispatcherQueueTimer? _readabilityTimer;
+        private DispatcherQueueTimer? _delayedReadabilityTimer;
         private DispatcherQueueTimer? _relativeTimeTimer;
         private double _smoothedBackdropLuminance = LuminanceFallbackValue;
         private bool _hasBackdropSample;
@@ -116,7 +116,8 @@ namespace ClipPocketWin
             // Apply true glass blur with maximum transparency
             if (TrySetAcrylicBackdrop())
             {
-                StartReadabilityMonitoring();
+                m_AppWindow.Changed += AppWindow_Changed;
+                TriggerDelayedReadabilityCheck(1.0);
             }
 
             Activated += Window_Activated;
@@ -158,25 +159,30 @@ namespace ClipPocketWin
             return true;
         }
 
-        private void StartReadabilityMonitoring()
+        private void TriggerDelayedReadabilityCheck(double delaySeconds = 1.5)
         {
-            _readabilityTimer ??= DispatcherQueue.CreateTimer();
-            _readabilityTimer.Interval = TimeSpan.FromMilliseconds(ReadabilityUpdateIntervalMs);
-            _readabilityTimer.IsRepeating = true;
-            _readabilityTimer.Tick += ReadabilityTimer_Tick;
-            _readabilityTimer.Start();
-        }
-
-        private void StopReadabilityMonitoring()
-        {
-            if (_readabilityTimer == null)
+            if (_delayedReadabilityTimer == null)
             {
-                return;
+                _delayedReadabilityTimer = DispatcherQueue.CreateTimer();
+                _delayedReadabilityTimer.Tick += (s, e) =>
+                {
+                    _delayedReadabilityTimer.Stop();
+                    _ = RefreshBackdropProtectionAsync();
+                };
             }
 
-            _readabilityTimer.Tick -= ReadabilityTimer_Tick;
-            _readabilityTimer.Stop();
-            _readabilityTimer = null;
+            _delayedReadabilityTimer.Stop();
+            _delayedReadabilityTimer.Interval = TimeSpan.FromSeconds(delaySeconds);
+            _delayedReadabilityTimer.Start();
+        }
+
+        private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
+        {
+            if (args.DidPositionChange || args.DidSizeChange)
+            {
+                _ = RefreshBackdropProtectionAsync();
+                TriggerDelayedReadabilityCheck();
+            }
         }
 
         private void StartRelativeTimeUpdates()
@@ -216,11 +222,6 @@ namespace ClipPocketWin
             {
                 card.RefreshRelativeTime();
             }
-        }
-
-        private void ReadabilityTimer_Tick(DispatcherQueueTimer sender, object args)
-        {
-            _ = RefreshBackdropProtectionAsync();
         }
 
         private async void ClipboardCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -1333,18 +1334,17 @@ namespace ClipPocketWin
                 return false;
             }
 
-            int centerX = left + (width / 2);
-            int centerY = top + (height / 2);
-
-            Span<(int X, int Y)> samples = stackalloc (int X, int Y)[8];
-            samples[0] = (left - SamplingPadding, top - SamplingPadding);
-            samples[1] = (centerX, top - SamplingPadding);
-            samples[2] = (left + width + SamplingPadding, top - SamplingPadding);
-            samples[3] = (left - SamplingPadding, centerY);
-            samples[4] = (left + width + SamplingPadding, centerY);
-            samples[5] = (left - SamplingPadding, top + height + SamplingPadding);
-            samples[6] = (centerX, top + height + SamplingPadding);
-            samples[7] = (left + width + SamplingPadding, top + height + SamplingPadding);
+            Span<(int X, int Y)> samples = stackalloc (int X, int Y)[SamplingGridRows * SamplingGridCols];
+            int index = 0;
+            for (int r = 0; r < SamplingGridRows; r++)
+            {
+                for (int c = 0; c < SamplingGridCols; c++)
+                {
+                    int x = left + (int)(width * (c + 0.5) / SamplingGridCols);
+                    int y = top + (int)(height * (r + 0.5) / SamplingGridRows);
+                    samples[index++] = (x, y);
+                }
+            }
 
             IntPtr desktopDc = GetDC(IntPtr.Zero);
             if (desktopDc == IntPtr.Zero)
@@ -1420,6 +1420,7 @@ namespace ClipPocketWin
             }
 
             _ = RefreshBackdropProtectionAsync();
+            TriggerDelayedReadabilityCheck();
         }
 
         private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -1476,7 +1477,7 @@ namespace ClipPocketWin
         private void Window_Closed(object sender, WindowEventArgs args)
         {
             _clipboardStateService.StateChanged -= ClipboardStateService_StateChanged;
-            StopReadabilityMonitoring();
+            _delayedReadabilityTimer?.Stop();
             StopRelativeTimeUpdates();
             _acrylicController?.Dispose();
             _acrylicController = null;
