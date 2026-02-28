@@ -38,15 +38,22 @@ namespace ClipPocketWin
     public sealed partial class MainWindow : Window
     {
         private const float MinTintOpacity = 0.12f;
-        private const float MaxTintOpacity = 0.79f;
+        private const float MaxTintOpacity = 0.90f;
         private const float MinLuminosityOpacity = 0.00f;
-        private const float MaxLuminosityOpacity = 0.52f;
-        private const float MaxAdditionalContrastTint = 0.22f;
-        private const double LuminanceProtectionThreshold = 0.62;
+        private const float MaxLuminosityOpacity = 0.66f;
+        private const float MaxAdditionalContrastTint = 0.30f;
+        private const double LuminanceProtectionThreshold = 0.42;
         private const double LuminanceFallbackValue = 0.74;
-        private const double LuminanceSmoothing = 0.62;
+        private const double LuminanceSmoothing = 0.72;
         private const int SamplingGridRows = 5;
         private const int SamplingGridCols = 5;
+        private const int ChunkSubSamplesPerAxis = 3;
+        private const double ChunkTrimFraction = 0.05;
+        private const double ChunkUpperPercentile = 0.80;
+        private const double ChunkUpperPercentileWeight = 0.60;
+        private const double ProtectionCurveGamma = 0.72;
+        private const double PostMoveReadabilityDelaySeconds = 0.45;
+        private const double PostShowReadabilityDelaySeconds = 0.90;
         private const double CardHoverScale = 1.03;
         private const double CardHoverAnimationDurationMs = 120;
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
@@ -69,6 +76,7 @@ namespace ClipPocketWin
         private double _smoothedBackdropLuminance = LuminanceFallbackValue;
         private bool _hasBackdropSample;
         private bool _isBackdropSampling;
+        private bool _wasVisibleForSampling;
 
         public MainWindow()
         {
@@ -117,7 +125,6 @@ namespace ClipPocketWin
             if (TrySetAcrylicBackdrop())
             {
                 m_AppWindow.Changed += AppWindow_Changed;
-                TriggerDelayedReadabilityCheck(1.0);
             }
 
             Activated += Window_Activated;
@@ -154,20 +161,27 @@ namespace ClipPocketWin
                 this.As<ICompositionSupportsSystemBackdrop>());
             _acrylicController.SetSystemBackdropConfiguration(_configurationSource);
 
-            _ = RefreshBackdropProtectionAsync();
-
             return true;
         }
 
-        private void TriggerDelayedReadabilityCheck(double delaySeconds = 1.5)
+        private void TriggerDelayedReadabilityCheck(double delaySeconds = PostMoveReadabilityDelaySeconds)
         {
+            if (!IsWindowVisibleForSampling())
+            {
+                _delayedReadabilityTimer?.Stop();
+                return;
+            }
+
             if (_delayedReadabilityTimer == null)
             {
                 _delayedReadabilityTimer = DispatcherQueue.CreateTimer();
                 _delayedReadabilityTimer.Tick += (s, e) =>
                 {
                     _delayedReadabilityTimer.Stop();
-                    _ = RefreshBackdropProtectionAsync();
+                    if (IsWindowVisibleForSampling())
+                    {
+                        _ = RefreshBackdropProtectionAsync();
+                    }
                 };
             }
 
@@ -180,9 +194,31 @@ namespace ClipPocketWin
         {
             if (args.DidPositionChange || args.DidSizeChange)
             {
+                if (!IsWindowVisibleForSampling())
+                {
+                    return;
+                }
+
+                _wasVisibleForSampling = true;
                 _ = RefreshBackdropProtectionAsync();
                 TriggerDelayedReadabilityCheck();
             }
+        }
+
+        private bool IsWindowVisibleForSampling()
+        {
+            if (_acrylicController == null)
+            {
+                return false;
+            }
+
+            IntPtr hWnd = WindowNative.GetWindowHandle(this);
+            if (hWnd == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            return IsWindowVisible(hWnd);
         }
 
         private void StartRelativeTimeUpdates()
@@ -1247,7 +1283,7 @@ namespace ClipPocketWin
 
         private async Task RefreshBackdropProtectionAsync()
         {
-            if (_acrylicController == null || _isBackdropSampling)
+            if (_acrylicController == null || _isBackdropSampling || !IsWindowVisibleForSampling())
             {
                 return;
             }
@@ -1310,6 +1346,7 @@ namespace ClipPocketWin
 
             double normalizedProtection = (luminance - LuminanceProtectionThreshold) / (1d - LuminanceProtectionThreshold);
             normalizedProtection = Math.Clamp(normalizedProtection, 0d, 1d);
+            normalizedProtection = Math.Pow(normalizedProtection, ProtectionCurveGamma);
             normalizedProtection = SmoothStep(normalizedProtection);
 
             float protection = (float)normalizedProtection;
@@ -1334,17 +1371,8 @@ namespace ClipPocketWin
                 return false;
             }
 
-            Span<(int X, int Y)> samples = stackalloc (int X, int Y)[SamplingGridRows * SamplingGridCols];
-            int index = 0;
-            for (int r = 0; r < SamplingGridRows; r++)
-            {
-                for (int c = 0; c < SamplingGridCols; c++)
-                {
-                    int x = left + (int)(width * (c + 0.5) / SamplingGridCols);
-                    int y = top + (int)(height * (r + 0.5) / SamplingGridRows);
-                    samples[index++] = (x, y);
-                }
-            }
+            Span<double> chunkLuminances = stackalloc double[SamplingGridRows * SamplingGridCols];
+            int validChunkCount = 0;
 
             IntPtr desktopDc = GetDC(IntPtr.Zero);
             if (desktopDc == IntPtr.Zero)
@@ -1352,25 +1380,43 @@ namespace ClipPocketWin
                 return false;
             }
 
-            double total = 0d;
-            int validCount = 0;
-
             try
             {
-                foreach ((int sampleX, int sampleY) in samples)
+                for (int r = 0; r < SamplingGridRows; r++)
                 {
-                    uint colorRef = GetPixel(desktopDc, sampleX, sampleY);
-                    if (colorRef == 0xFFFFFFFF)
+                    for (int c = 0; c < SamplingGridCols; c++)
                     {
-                        continue;
+                        double chunkTotal = 0d;
+                        int chunkSampleCount = 0;
+
+                        for (int sy = 0; sy < ChunkSubSamplesPerAxis; sy++)
+                        {
+                            for (int sx = 0; sx < ChunkSubSamplesPerAxis; sx++)
+                            {
+                                double normalizedX = (c + ((sx + 0.5d) / ChunkSubSamplesPerAxis)) / SamplingGridCols;
+                                double normalizedY = (r + ((sy + 0.5d) / ChunkSubSamplesPerAxis)) / SamplingGridRows;
+
+                                int sampleX = left + (int)(width * normalizedX);
+                                int sampleY = top + (int)(height * normalizedY);
+
+                                uint colorRef = GetPixel(desktopDc, sampleX, sampleY);
+                                if (colorRef == 0xFFFFFFFF)
+                                {
+                                    continue;
+                                }
+
+                                chunkTotal += ColorRefToLuminance(colorRef);
+                                chunkSampleCount++;
+                            }
+                        }
+
+                        if (chunkSampleCount == 0)
+                        {
+                            continue;
+                        }
+
+                        chunkLuminances[validChunkCount++] = chunkTotal / chunkSampleCount;
                     }
-
-                    byte r = (byte)(colorRef & 0x000000FF);
-                    byte g = (byte)((colorRef & 0x0000FF00) >> 8);
-                    byte b = (byte)((colorRef & 0x00FF0000) >> 16);
-
-                    total += ((0.2126d * r) + (0.7152d * g) + (0.0722d * b)) / 255d;
-                    validCount++;
                 }
             }
             finally
@@ -1378,13 +1424,52 @@ namespace ClipPocketWin
                 _ = ReleaseDC(IntPtr.Zero, desktopDc);
             }
 
-            if (validCount == 0)
+            if (validChunkCount == 0)
             {
                 return false;
             }
 
-            luminance = total / validCount;
+            luminance = ComputeRobustChunkLuminance(chunkLuminances[..validChunkCount]);
             return true;
+        }
+
+        private static double ComputeRobustChunkLuminance(ReadOnlySpan<double> chunkLuminances)
+        {
+            double[] sorted = chunkLuminances.ToArray();
+            Array.Sort(sorted);
+
+            int trimCount = (int)Math.Floor(sorted.Length * ChunkTrimFraction);
+            if (trimCount * 2 >= sorted.Length)
+            {
+                trimCount = 0;
+            }
+
+            double trimmedTotal = 0d;
+            int trimmedCount = 0;
+            for (int i = trimCount; i < sorted.Length - trimCount; i++)
+            {
+                trimmedTotal += sorted[i];
+                trimmedCount++;
+            }
+
+            double trimmedMean = trimmedCount > 0
+                ? trimmedTotal / trimmedCount
+                : sorted[sorted.Length / 2];
+
+            int upperPercentileIndex = (int)Math.Round((sorted.Length - 1) * ChunkUpperPercentile);
+            upperPercentileIndex = Math.Clamp(upperPercentileIndex, 0, sorted.Length - 1);
+            double upperPercentile = sorted[upperPercentileIndex];
+
+            return Math.Clamp(Lerp(trimmedMean, upperPercentile, ChunkUpperPercentileWeight), 0d, 1d);
+        }
+
+        private static double ColorRefToLuminance(uint colorRef)
+        {
+            byte r = (byte)(colorRef & 0x000000FF);
+            byte g = (byte)((colorRef & 0x0000FF00) >> 8);
+            byte b = (byte)((colorRef & 0x00FF0000) >> 16);
+
+            return ((0.2126d * r) + (0.7152d * g) + (0.0722d * b)) / 255d;
         }
 
         private static double SmoothStep(double value)
@@ -1419,8 +1504,23 @@ namespace ClipPocketWin
                 _configurationSource.IsInputActive = true;
             }
 
+            bool isVisible = IsWindowVisibleForSampling();
+            if (args.WindowActivationState == WindowActivationState.Deactivated || !isVisible)
+            {
+                _wasVisibleForSampling = false;
+                return;
+            }
+
+            bool isJustShown = !_wasVisibleForSampling;
+            _wasVisibleForSampling = true;
+
+            if (!isJustShown)
+            {
+                return;
+            }
+
             _ = RefreshBackdropProtectionAsync();
-            TriggerDelayedReadabilityCheck();
+            TriggerDelayedReadabilityCheck(PostShowReadabilityDelaySeconds);
         }
 
         private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -1478,6 +1578,7 @@ namespace ClipPocketWin
         {
             _clipboardStateService.StateChanged -= ClipboardStateService_StateChanged;
             _delayedReadabilityTimer?.Stop();
+            _wasVisibleForSampling = false;
             StopRelativeTimeUpdates();
             _acrylicController?.Dispose();
             _acrylicController = null;
@@ -2099,6 +2200,9 @@ namespace ClipPocketWin
 
         [DllImport("user32.dll")]
         private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
 
         [DllImport("gdi32.dll")]
         private static extern uint GetPixel(IntPtr hdc, int x, int y);
