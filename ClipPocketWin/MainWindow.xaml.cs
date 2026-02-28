@@ -45,18 +45,30 @@ namespace ClipPocketWin
         private const float MaxAdditionalContrastTint = 0.30f;
         private const double LuminanceProtectionThreshold = 0.42;
         private const double LuminanceFallbackValue = 0.74;
-        private const double LuminanceSmoothing = 0.72;
+        private const double LuminanceRiseSmoothing = 0.72;
+        private const double ReliableLuminanceDecaySmoothing = 0.20;
+        private const double UnreliableLuminanceDecaySmoothing = 0.05;
         private const int SamplingGridRows = 5;
         private const int SamplingGridCols = 5;
         private const int ChunkSubSamplesPerAxis = 3;
         private const double ChunkTrimFraction = 0.05;
         private const double ChunkUpperPercentile = 0.80;
         private const double ChunkUpperPercentileWeight = 0.60;
+        private const int MinimumReliableUnderWindowSamples = 45;
+        private const int VkLButton = 0x01;
+        private const short KeyPressedMask = unchecked((short)0x8000);
         private const double ProtectionCurveGamma = 0.72;
         private const double PostMoveReadabilityDelaySeconds = 0.45;
         private const double PostShowReadabilityDelaySeconds = 0.90;
+        private const double ContinuousReadabilityIntervalSeconds = 0.22;
+        private const double BackdropDiagnosticLogIntervalSeconds = 1.5;
+        private const double BackdropFallbackWarningIntervalSeconds = 6.0;
         private const double CardHoverScale = 1.03;
         private const double CardHoverAnimationDurationMs = 120;
+        private const int OuterRingSampleSegments = 8;
+        private const int OuterRingSampleInsetPixels = 2;
+        private const uint GwHwndNext = 2;
+        private const uint InvalidColorRef = 0xFFFFFFFF;
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
         private static readonly Windows.UI.Color StrongProtectionTintColor = Windows.UI.Color.FromArgb(255, 1, 4, 12);
 
@@ -73,11 +85,42 @@ namespace ClipPocketWin
         private DesktopAcrylicController? _acrylicController;
         private SystemBackdropConfiguration? _configurationSource;
         private DispatcherQueueTimer? _delayedReadabilityTimer;
+        private DispatcherQueueTimer? _continuousReadabilityTimer;
         private DispatcherQueueTimer? _relativeTimeTimer;
         private double _smoothedBackdropLuminance = LuminanceFallbackValue;
         private bool _hasBackdropSample;
         private bool _isBackdropSampling;
         private bool _wasVisibleForSampling;
+        private BackdropSampleSource _lastLoggedSampleSource = BackdropSampleSource.None;
+        private DateTimeOffset _lastBackdropDiagnosticLogUtc = DateTimeOffset.MinValue;
+        private DateTimeOffset _lastBackdropFallbackWarningUtc = DateTimeOffset.MinValue;
+
+        private enum BackdropSampleSource
+        {
+            None,
+            UnderWindow,
+            OuterRing,
+            Fallback
+        }
+
+        private readonly record struct BackdropSamplingDiagnostics(
+            BackdropSampleSource Source,
+            int ValidSamples,
+            int CandidateWindowCount,
+            int TouchedWindowCount);
+
+        private readonly struct WindowSamplingCandidate
+        {
+            public WindowSamplingCandidate(nint handle, NativeRect bounds)
+            {
+                Handle = handle;
+                Bounds = bounds;
+            }
+
+            public nint Handle { get; }
+
+            public NativeRect Bounds { get; }
+        }
 
         public MainWindow()
         {
@@ -192,6 +235,49 @@ namespace ClipPocketWin
             _delayedReadabilityTimer.Start();
         }
 
+        private void EnsureContinuousReadabilityCheck()
+        {
+            if (!IsWindowVisibleForSampling())
+            {
+                _continuousReadabilityTimer?.Stop();
+                return;
+            }
+
+            if (_continuousReadabilityTimer == null)
+            {
+                _continuousReadabilityTimer = DispatcherQueue.CreateTimer();
+                _continuousReadabilityTimer.Interval = TimeSpan.FromSeconds(ContinuousReadabilityIntervalSeconds);
+                _continuousReadabilityTimer.IsRepeating = true;
+                _continuousReadabilityTimer.Tick += ContinuousReadabilityTimer_Tick;
+            }
+
+            if (!_continuousReadabilityTimer.IsRunning)
+            {
+                _continuousReadabilityTimer.Start();
+            }
+        }
+
+        private void StopContinuousReadabilityCheck()
+        {
+            if (_continuousReadabilityTimer == null)
+            {
+                return;
+            }
+
+            _continuousReadabilityTimer.Stop();
+        }
+
+        private void ContinuousReadabilityTimer_Tick(DispatcherQueueTimer sender, object args)
+        {
+            if (!IsWindowVisibleForSampling())
+            {
+                sender.Stop();
+                return;
+            }
+
+            _ = RefreshBackdropProtectionAsync();
+        }
+
         private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
         {
             if (args.DidPositionChange || args.DidSizeChange)
@@ -204,6 +290,7 @@ namespace ClipPocketWin
                 _wasVisibleForSampling = true;
                 _ = RefreshBackdropProtectionAsync();
                 TriggerDelayedReadabilityCheck();
+                EnsureContinuousReadabilityCheck();
             }
         }
 
@@ -1465,29 +1552,37 @@ namespace ClipPocketWin
                 return;
             }
 
+            IntPtr windowHandle = WindowNative.GetWindowHandle(this);
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
             int left = m_AppWindow.Position.X;
             int top = m_AppWindow.Position.Y;
             int width = m_AppWindow.Size.Width;
             int height = m_AppWindow.Size.Height;
 
             double measuredLuminance;
+            BackdropSamplingDiagnostics diagnostics;
             if (width <= 0 || height <= 0)
             {
                 measuredLuminance = LuminanceFallbackValue;
+                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0);
             }
             else
             {
                 _isBackdropSampling = true;
                 try
                 {
-                    measuredLuminance = await Task.Run(() =>
+                    (measuredLuminance, diagnostics) = await Task.Run(() =>
                     {
-                        if (TryMeasureBackdropLuminance(left, top, width, height, out double sampledLuminance))
+                        if (TryMeasureBackdropLuminance(windowHandle, left, top, width, height, out double sampledLuminance, out BackdropSamplingDiagnostics sampledDiagnostics))
                         {
-                            return sampledLuminance;
+                            return (sampledLuminance, sampledDiagnostics);
                         }
 
-                        return LuminanceFallbackValue;
+                        return (LuminanceFallbackValue, new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0));
                     });
                 }
                 finally
@@ -1508,10 +1603,93 @@ namespace ClipPocketWin
             }
             else
             {
-                _smoothedBackdropLuminance = Lerp(_smoothedBackdropLuminance, measuredLuminance, LuminanceSmoothing);
+                double stabilizedMeasuredLuminance = StabilizeMeasuredLuminance(measuredLuminance, _smoothedBackdropLuminance, diagnostics);
+                double smoothing = ResolveLuminanceSmoothing(_smoothedBackdropLuminance, stabilizedMeasuredLuminance, diagnostics);
+                _smoothedBackdropLuminance = Lerp(_smoothedBackdropLuminance, stabilizedMeasuredLuminance, smoothing);
+                measuredLuminance = stabilizedMeasuredLuminance;
             }
 
             ApplyBackdropReadability(_smoothedBackdropLuminance);
+            LogBackdropSamplingDiagnostics(diagnostics, measuredLuminance, _smoothedBackdropLuminance);
+        }
+
+        private static double StabilizeMeasuredLuminance(double measuredLuminance, double currentSmoothedLuminance, BackdropSamplingDiagnostics diagnostics)
+        {
+            if (measuredLuminance >= currentSmoothedLuminance)
+            {
+                return measuredLuminance;
+            }
+
+            bool reliableUnderWindowSample = IsReliableUnderWindowSample(diagnostics);
+            bool isMouseButtonDown = (GetAsyncKeyState(VkLButton) & KeyPressedMask) != 0;
+            if (!reliableUnderWindowSample)
+            {
+                return currentSmoothedLuminance;
+            }
+
+            if (isMouseButtonDown)
+            {
+                const double maxDropWhileDragging = 0.05;
+                return Math.Max(measuredLuminance, currentSmoothedLuminance - maxDropWhileDragging);
+            }
+
+            return measuredLuminance;
+        }
+
+        private static double ResolveLuminanceSmoothing(double currentSmoothedLuminance, double targetLuminance, BackdropSamplingDiagnostics diagnostics)
+        {
+            if (targetLuminance >= currentSmoothedLuminance)
+            {
+                return LuminanceRiseSmoothing;
+            }
+
+            return IsReliableUnderWindowSample(diagnostics)
+                ? ReliableLuminanceDecaySmoothing
+                : UnreliableLuminanceDecaySmoothing;
+        }
+
+        private static bool IsReliableUnderWindowSample(BackdropSamplingDiagnostics diagnostics)
+        {
+            return diagnostics.Source == BackdropSampleSource.UnderWindow
+                && diagnostics.ValidSamples >= MinimumReliableUnderWindowSamples
+                && diagnostics.TouchedWindowCount > 0;
+        }
+
+        private void LogBackdropSamplingDiagnostics(BackdropSamplingDiagnostics diagnostics, double measuredLuminance, double smoothedLuminance)
+        {
+            if (_logger == null)
+            {
+                return;
+            }
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            bool sourceChanged = diagnostics.Source != _lastLoggedSampleSource;
+            bool intervalElapsed = (now - _lastBackdropDiagnosticLogUtc).TotalSeconds >= BackdropDiagnosticLogIntervalSeconds;
+            if (sourceChanged || intervalElapsed)
+            {
+                _logger.LogDebug(
+                    "Backdrop sample source={Source}, effectiveMeasured={MeasuredLuminance:F3}, smoothed={SmoothedLuminance:F3}, validSamples={ValidSamples}, candidateWindows={CandidateWindows}, touchedWindows={TouchedWindows}, reliableUnderWindow={ReliableUnderWindow}",
+                    diagnostics.Source,
+                    measuredLuminance,
+                    smoothedLuminance,
+                    diagnostics.ValidSamples,
+                    diagnostics.CandidateWindowCount,
+                    diagnostics.TouchedWindowCount,
+                    IsReliableUnderWindowSample(diagnostics));
+
+                _lastBackdropDiagnosticLogUtc = now;
+                _lastLoggedSampleSource = diagnostics.Source;
+            }
+
+            if (diagnostics.Source == BackdropSampleSource.Fallback
+                && (now - _lastBackdropFallbackWarningUtc).TotalSeconds >= BackdropFallbackWarningIntervalSeconds)
+            {
+                _logger.LogWarning(
+                    "Backdrop under-window sampling unavailable. Using fallback luminance. ValidSamples={ValidSamples}, CandidateWindows={CandidateWindows}",
+                    diagnostics.ValidSamples,
+                    diagnostics.CandidateWindowCount);
+                _lastBackdropFallbackWarningUtc = now;
+            }
         }
 
         private void ApplyBackdropReadability(double luminance)
@@ -1539,11 +1717,56 @@ namespace ClipPocketWin
                 BaseTintColor.B);
         }
 
-        private static bool TryMeasureBackdropLuminance(int left, int top, int width, int height, out double luminance)
+        private static bool TryMeasureBackdropLuminance(nint windowHandle, int left, int top, int width, int height, out double luminance, out BackdropSamplingDiagnostics diagnostics)
         {
             luminance = 0d;
+            diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0);
 
             if (width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            if (TryMeasureUnderWindowLuminance(windowHandle, left, top, width, height, out double underWindowLuminance, out int underWindowSamples, out int candidateWindowCount, out int touchedWindowCount))
+            {
+                luminance = underWindowLuminance;
+                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.UnderWindow, underWindowSamples, candidateWindowCount, touchedWindowCount);
+                return true;
+            }
+
+            if (TryMeasureOuterRingLuminance(left, top, width, height, out double outerRingLuminance, out int outerRingSamples))
+            {
+                luminance = outerRingLuminance;
+                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.OuterRing, outerRingSamples, 0, 0);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryMeasureUnderWindowLuminance(
+            nint windowHandle,
+            int left,
+            int top,
+            int width,
+            int height,
+            out double luminance,
+            out int validSampleCount,
+            out int candidateWindowCount,
+            out int touchedWindowCount)
+        {
+            luminance = 0d;
+            validSampleCount = 0;
+            candidateWindowCount = 0;
+            touchedWindowCount = 0;
+
+            if (!TryBuildUnderWindowCandidates(windowHandle, out List<WindowSamplingCandidate> candidates))
+            {
+                return false;
+            }
+
+            candidateWindowCount = candidates.Count;
+            if (candidateWindowCount == 0)
             {
                 return false;
             }
@@ -1551,11 +1774,8 @@ namespace ClipPocketWin
             Span<double> chunkLuminances = stackalloc double[SamplingGridRows * SamplingGridCols];
             int validChunkCount = 0;
 
-            IntPtr desktopDc = GetDC(IntPtr.Zero);
-            if (desktopDc == IntPtr.Zero)
-            {
-                return false;
-            }
+            Dictionary<nint, IntPtr> windowDcs = new(candidates.Count);
+            HashSet<nint> touchedWindows = [];
 
             try
             {
@@ -1576,14 +1796,15 @@ namespace ClipPocketWin
                                 int sampleX = left + (int)(width * normalizedX);
                                 int sampleY = top + (int)(height * normalizedY);
 
-                                uint colorRef = GetPixel(desktopDc, sampleX, sampleY);
-                                if (colorRef == 0xFFFFFFFF)
+                                if (!TrySampleLuminanceFromUnderlyingWindow(candidates, windowDcs, sampleX, sampleY, out double sampleLuminance, out nint sampledWindowHandle))
                                 {
                                     continue;
                                 }
 
-                                chunkTotal += ColorRefToLuminance(colorRef);
+                                chunkTotal += sampleLuminance;
                                 chunkSampleCount++;
+                                validSampleCount++;
+                                _ = touchedWindows.Add(sampledWindowHandle);
                             }
                         }
 
@@ -1598,7 +1819,13 @@ namespace ClipPocketWin
             }
             finally
             {
-                _ = ReleaseDC(IntPtr.Zero, desktopDc);
+                foreach (KeyValuePair<nint, IntPtr> pair in windowDcs)
+                {
+                    if (pair.Value != IntPtr.Zero)
+                    {
+                        _ = ReleaseDC(pair.Key, pair.Value);
+                    }
+                }
             }
 
             if (validChunkCount == 0)
@@ -1607,7 +1834,166 @@ namespace ClipPocketWin
             }
 
             luminance = ComputeRobustChunkLuminance(chunkLuminances[..validChunkCount]);
+            touchedWindowCount = touchedWindows.Count;
             return true;
+        }
+
+        private static bool TryBuildUnderWindowCandidates(nint windowHandle, out List<WindowSamplingCandidate> candidates)
+        {
+            candidates = [];
+
+            if (!IsWindow(windowHandle))
+            {
+                return false;
+            }
+
+            nint current = GetWindow(windowHandle, GwHwndNext);
+            int safetyCounter = 0;
+
+            while (current != nint.Zero && safetyCounter < 1024)
+            {
+                safetyCounter++;
+
+                if (current != windowHandle
+                    && IsWindow(current)
+                    && IsWindowVisible(current)
+                    && !IsIconic(current)
+                    && GetWindowRect(current, out NativeRect bounds)
+                    && bounds.Right > bounds.Left
+                    && bounds.Bottom > bounds.Top)
+                {
+                    candidates.Add(new WindowSamplingCandidate(current, bounds));
+                }
+
+                current = GetWindow(current, GwHwndNext);
+            }
+
+            return candidates.Count > 0;
+        }
+
+        private static bool TrySampleLuminanceFromUnderlyingWindow(
+            List<WindowSamplingCandidate> candidates,
+            Dictionary<nint, IntPtr> windowDcs,
+            int screenX,
+            int screenY,
+            out double luminance,
+            out nint sampledWindowHandle)
+        {
+            luminance = 0d;
+            sampledWindowHandle = nint.Zero;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                WindowSamplingCandidate candidate = candidates[i];
+                if (!IsPointInsideRect(candidate.Bounds, screenX, screenY))
+                {
+                    continue;
+                }
+
+                if (!windowDcs.TryGetValue(candidate.Handle, out IntPtr targetDc))
+                {
+                    targetDc = GetWindowDC(candidate.Handle);
+                    windowDcs[candidate.Handle] = targetDc;
+                }
+
+                if (targetDc == IntPtr.Zero)
+                {
+                    continue;
+                }
+
+                int localX = screenX - candidate.Bounds.Left;
+                int localY = screenY - candidate.Bounds.Top;
+                uint colorRef = GetPixel(targetDc, localX, localY);
+                if (colorRef == InvalidColorRef)
+                {
+                    continue;
+                }
+
+                sampledWindowHandle = candidate.Handle;
+                luminance = ColorRefToLuminance(colorRef);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryMeasureOuterRingLuminance(int left, int top, int width, int height, out double luminance, out int validSampleCount)
+        {
+            luminance = 0d;
+            validSampleCount = 0;
+
+            if (width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            IntPtr desktopDc = GetDC(IntPtr.Zero);
+            if (desktopDc == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                Span<double> ringSamples = stackalloc double[OuterRingSampleSegments * 4];
+
+                for (int i = 0; i < OuterRingSampleSegments; i++)
+                {
+                    double normalized = (i + 0.5d) / OuterRingSampleSegments;
+                    int horizontalX = left + (int)(width * normalized);
+                    int verticalY = top + (int)(height * normalized);
+
+                    AddDesktopSample(desktopDc, horizontalX, top - OuterRingSampleInsetPixels, ringSamples, ref validSampleCount);
+                    AddDesktopSample(desktopDc, horizontalX, top + height + OuterRingSampleInsetPixels, ringSamples, ref validSampleCount);
+                    AddDesktopSample(desktopDc, left - OuterRingSampleInsetPixels, verticalY, ringSamples, ref validSampleCount);
+                    AddDesktopSample(desktopDc, left + width + OuterRingSampleInsetPixels, verticalY, ringSamples, ref validSampleCount);
+                }
+
+                if (validSampleCount == 0)
+                {
+                    return false;
+                }
+
+                luminance = ComputeRobustChunkLuminance(ringSamples[..validSampleCount]);
+                return true;
+            }
+            finally
+            {
+                _ = ReleaseDC(IntPtr.Zero, desktopDc);
+            }
+        }
+
+        private static void AddDesktopSample(IntPtr desktopDc, int x, int y, Span<double> ringSamples, ref int sampleCount)
+        {
+            if ((uint)sampleCount >= (uint)ringSamples.Length)
+            {
+                return;
+            }
+
+            uint colorRef = GetPixel(desktopDc, x, y);
+            if (colorRef == InvalidColorRef)
+            {
+                return;
+            }
+
+            ringSamples[sampleCount] = ColorRefToLuminance(colorRef);
+            sampleCount++;
+        }
+
+        private static bool IsPointInsideRect(NativeRect rect, int x, int y)
+        {
+            return x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom;
+        }
+
+        private struct NativeRect
+        {
+            public int Left;
+
+            public int Top;
+
+            public int Right;
+
+            public int Bottom;
         }
 
         private static double ComputeRobustChunkLuminance(ReadOnlySpan<double> chunkLuminances)
@@ -1684,9 +2070,12 @@ namespace ClipPocketWin
             bool isVisible = IsWindowVisibleForSampling();
             if (args.WindowActivationState == WindowActivationState.Deactivated || !isVisible)
             {
+                StopContinuousReadabilityCheck();
                 _wasVisibleForSampling = false;
                 return;
             }
+
+            EnsureContinuousReadabilityCheck();
 
             bool isJustShown = !_wasVisibleForSampling;
             _wasVisibleForSampling = true;
@@ -1755,6 +2144,13 @@ namespace ClipPocketWin
         {
             _clipboardStateService.StateChanged -= ClipboardStateService_StateChanged;
             _delayedReadabilityTimer?.Stop();
+            if (_continuousReadabilityTimer != null)
+            {
+                _continuousReadabilityTimer.Tick -= ContinuousReadabilityTimer_Tick;
+                _continuousReadabilityTimer.Stop();
+                _continuousReadabilityTimer = null;
+            }
+
             _wasVisibleForSampling = false;
             StopRelativeTimeUpdates();
             _acrylicController?.Dispose();
@@ -2381,7 +2777,25 @@ namespace ClipPocketWin
         private static extern IntPtr GetDC(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        private static extern IntPtr GetWindowDC(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
         private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        [DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
 
         [DllImport("user32.dll")]
         private static extern bool IsWindowVisible(IntPtr hWnd);
