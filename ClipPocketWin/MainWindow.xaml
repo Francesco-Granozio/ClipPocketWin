@@ -237,6 +237,7 @@
                             <TextBlock Text="Text" />
                         </StackPanel>
                     </Button>
+                    <!--
                     <Button
                         x:Name="RichTextFilterButton"
                         Click="TypeFilterButton_Click"
@@ -250,6 +251,7 @@
                             <TextBlock Text="Rich Text" />
                         </StackPanel>
                     </Button>
+                    -->
                     <Button
                         x:Name="CodeFilterButton"
                         Click="TypeFilterButton_Click"

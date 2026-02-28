@@ -634,7 +634,7 @@ namespace ClipPocketWin
                 "Color" => ClipboardItemType.Color,
                 "Image" => ClipboardItemType.Image,
                 "File" => ClipboardItemType.File,
-                "RichText" => ClipboardItemType.RichText,
+                // "RichText" => ClipboardItemType.RichText,
                 _ => null
             };
         }

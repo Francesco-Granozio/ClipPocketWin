@@ -229,6 +229,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 return Result<IReadOnlyList<ClipboardItem>>.Success(fileItems);
             }
 
+            /*
             if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
             {
                 return Result<IReadOnlyList<ClipboardItem>>.Success([
@@ -243,6 +244,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 }
                 ]);
             }
+            */
 
             if (TryReadImagePayload(out byte[]? imagePayload))
             {
@@ -450,7 +452,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             StringBuilder pathBuilder = new((int)length + 1);
             _ = DragQueryFile(handle, fileIndex, pathBuilder, (uint)pathBuilder.Capacity);
             string path = pathBuilder.ToString();
-            
+
             try
             {
                 if (!string.IsNullOrWhiteSpace(path) && !System.IO.Directory.Exists(path))
