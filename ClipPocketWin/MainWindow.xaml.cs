@@ -7,6 +7,7 @@ using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -91,6 +92,7 @@ namespace ClipPocketWin
             ClipboardItemsListView.ItemsSource = _clipboardCards;
             RefreshClipboardCards();
             UpdateSectionButtons();
+            UpdateTypeFilterButtons();
             StartRelativeTimeUpdates();
 
             IntPtr hWnd = WindowNative.GetWindowHandle(this);
@@ -273,13 +275,28 @@ namespace ClipPocketWin
 
         private void CodePreview_Loaded(object sender, RoutedEventArgs e)
         {
-            if (sender is not RichTextBlock richTextBlock || richTextBlock.DataContext is not ClipboardCardViewModel card)
+            if (sender is not RichTextBlock richTextBlock)
             {
                 return;
             }
 
+            RenderCodePreview(richTextBlock, richTextBlock.DataContext as ClipboardCardViewModel);
+        }
+
+        private void CodePreview_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+        {
+            if (sender is not RichTextBlock richTextBlock)
+            {
+                return;
+            }
+
+            RenderCodePreview(richTextBlock, args.NewValue as ClipboardCardViewModel);
+        }
+
+        private static void RenderCodePreview(RichTextBlock richTextBlock, ClipboardCardViewModel? card)
+        {
             richTextBlock.Blocks.Clear();
-            Paragraph paragraph = CodeSyntaxHighlighter.BuildParagraph(card.CodeText);
+            Paragraph paragraph = CodeSyntaxHighlighter.BuildParagraph(card?.CodeText);
             richTextBlock.Blocks.Add(paragraph);
         }
 
@@ -482,13 +499,132 @@ namespace ClipPocketWin
             int recentCount = Math.Min(20, _clipboardStateService.ClipboardItems.Count);
             int historyCount = _clipboardStateService.ClipboardItems.Count;
 
-            PinnedTabButton.Content = $"Pinned ({pinnedCount})";
-            RecentTabButton.Content = $"Recent ({recentCount})";
-            HistoryTabButton.Content = $"History ({historyCount})";
+            PinnedTabLabel.Text = $"Pinned ({pinnedCount})";
+            RecentTabLabel.Text = $"Recent ({recentCount})";
+            HistoryTabLabel.Text = $"History ({historyCount})";
 
-            PinnedTabButton.Opacity = _selectedSection == ClipboardSection.Pinned ? 1 : 0.75;
-            RecentTabButton.Opacity = _selectedSection == ClipboardSection.Recent ? 1 : 0.75;
-            HistoryTabButton.Opacity = _selectedSection == ClipboardSection.History ? 1 : 0.75;
+            ApplyChipSelectionVisual(PinnedTabButton, _selectedSection == ClipboardSection.Pinned);
+            ApplyChipSelectionVisual(RecentTabButton, _selectedSection == ClipboardSection.Recent);
+            ApplyChipSelectionVisual(HistoryTabButton, _selectedSection == ClipboardSection.History);
+        }
+
+        private void UpdateTypeFilterButtons()
+        {
+            foreach (object child in TypeFilterButtonsPanel.Children)
+            {
+                if (child is not Button button || button.Tag is not string tag)
+                {
+                    continue;
+                }
+
+                bool isSelected = IsSelectedTypeFilterTag(tag);
+                ApplyChipSelectionVisual(button, isSelected);
+            }
+        }
+
+        private bool IsSelectedTypeFilterTag(string tag)
+        {
+            if (_selectedTypeFilter is null)
+            {
+                return string.Equals(tag, "All", StringComparison.Ordinal);
+            }
+
+            ClipboardItemType? tagType = ResolveTypeFilterTag(tag);
+            return tagType == _selectedTypeFilter;
+        }
+
+        private static ClipboardItemType? ResolveTypeFilterTag(string tag)
+        {
+            return tag switch
+            {
+                "All" => null,
+                "Text" => ClipboardItemType.Text,
+                "Code" => ClipboardItemType.Code,
+                "Url" => ClipboardItemType.Url,
+                "Email" => ClipboardItemType.Email,
+                "Phone" => ClipboardItemType.Phone,
+                "Json" => ClipboardItemType.Json,
+                "Color" => ClipboardItemType.Color,
+                "Image" => ClipboardItemType.Image,
+                "File" => ClipboardItemType.File,
+                "RichText" => ClipboardItemType.RichText,
+                _ => null
+            };
+        }
+
+        private static void ApplyChipSelectionVisual(Button button, bool isSelected)
+        {
+            Windows.UI.Color background = isSelected
+                ? Windows.UI.Color.FromArgb(102, 80, 164, 255)
+                : Windows.UI.Color.FromArgb(34, 255, 255, 255);
+            Windows.UI.Color border = isSelected
+                ? Windows.UI.Color.FromArgb(85, 255, 255, 255)
+                : Windows.UI.Color.FromArgb(34, 255, 255, 255);
+            Windows.UI.Color foreground = isSelected
+                ? Windows.UI.Color.FromArgb(255, 255, 255, 255)
+                : Windows.UI.Color.FromArgb(170, 255, 255, 255);
+
+            ApplyChipStateResources(button, background, border, foreground);
+            button.Background = new SolidColorBrush(background);
+            button.BorderBrush = new SolidColorBrush(border);
+            button.Foreground = new SolidColorBrush(foreground);
+            button.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
+
+            if (button.Content is DependencyObject contentRoot)
+            {
+                Brush contentForeground = new SolidColorBrush(foreground);
+                ApplyForegroundToChipContent(contentRoot, contentForeground);
+            }
+
+            RefreshButtonVisualState(button);
+        }
+
+        private static void ApplyChipStateResources(Button button, Windows.UI.Color background, Windows.UI.Color border, Windows.UI.Color foreground)
+        {
+            SetBrushResource(button.Resources, "ButtonBackground", background);
+            SetBrushResource(button.Resources, "ButtonBackgroundPointerOver", background);
+            SetBrushResource(button.Resources, "ButtonBackgroundPressed", background);
+
+            SetBrushResource(button.Resources, "ButtonBorderBrush", border);
+            SetBrushResource(button.Resources, "ButtonBorderBrushPointerOver", border);
+            SetBrushResource(button.Resources, "ButtonBorderBrushPressed", border);
+
+            SetBrushResource(button.Resources, "ButtonForeground", foreground);
+            SetBrushResource(button.Resources, "ButtonForegroundPointerOver", foreground);
+            SetBrushResource(button.Resources, "ButtonForegroundPressed", foreground);
+        }
+
+        private static void SetBrushResource(ResourceDictionary resources, string key, Windows.UI.Color color)
+        {
+            resources[key] = new SolidColorBrush(color);
+        }
+
+        private static void RefreshButtonVisualState(Button button)
+        {
+            VisualStateManager.GoToState(button, "Normal", false);
+            if (button.IsPointerOver)
+            {
+                VisualStateManager.GoToState(button, "PointerOver", false);
+            }
+        }
+
+        private static void ApplyForegroundToChipContent(DependencyObject root, Brush foreground)
+        {
+            if (root is TextBlock textBlock)
+            {
+                textBlock.Foreground = foreground;
+            }
+            else if (root is FontIcon fontIcon)
+            {
+                fontIcon.Foreground = foreground;
+            }
+
+            int childrenCount = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < childrenCount; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(root, i);
+                ApplyForegroundToChipContent(child, foreground);
+            }
         }
 
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -546,22 +682,9 @@ namespace ClipPocketWin
                 return;
             }
 
-            _selectedTypeFilter = tag switch
-            {
-                "All" => null,
-                "Text" => ClipboardItemType.Text,
-                "Code" => ClipboardItemType.Code,
-                "Url" => ClipboardItemType.Url,
-                "Email" => ClipboardItemType.Email,
-                "Phone" => ClipboardItemType.Phone,
-                "Json" => ClipboardItemType.Json,
-                "Color" => ClipboardItemType.Color,
-                "Image" => ClipboardItemType.Image,
-                "File" => ClipboardItemType.File,
-                "RichText" => ClipboardItemType.RichText,
-                _ => null
-            };
+            _selectedTypeFilter = ResolveTypeFilterTag(tag);
 
+            UpdateTypeFilterButtons();
             RefreshClipboardCards();
         }
 
@@ -861,6 +984,7 @@ namespace ClipPocketWin
                 textPreviewVisibility,
                 style.CardBackgroundBrush,
                 style.HeaderBackgroundBrush,
+                style.BodyBackgroundBrush,
                 style.IconBackgroundBrush,
                 style.IconForegroundBrush,
                 item.TextContent ?? string.Empty,
@@ -907,6 +1031,7 @@ namespace ClipPocketWin
             return new ClipboardCardStyle(
                 CreateCardBackgroundBrush(accentColor),
                 CreateHeaderBackgroundBrush(accentColor),
+                CreateBodyBackgroundBrush(accentColor),
                 new SolidColorBrush(Windows.UI.Color.FromArgb(102, accentColor.R, accentColor.G, accentColor.B)),
                 new SolidColorBrush(iconColor));
         }
@@ -914,25 +1039,33 @@ namespace ClipPocketWin
         private static ClipboardCardStyle BuildSolidColorCardStyle(Windows.UI.Color color)
         {
             return new ClipboardCardStyle(
-                new SolidColorBrush(color),
+                CreateCardBackgroundBrush(color),
                 CreateHeaderBackgroundBrush(color),
+                CreateBodyBackgroundBrush(color),
                 new SolidColorBrush(Windows.UI.Color.FromArgb(58, 255, 255, 255)),
                 new SolidColorBrush(GetContrastingColor(color)));
         }
 
         private static LinearGradientBrush CreateHeaderBackgroundBrush(Windows.UI.Color accentColor)
         {
-            Windows.UI.Color lower = Darken(accentColor, 0.18f);
+            Windows.UI.Color upper = Lighten(accentColor, 0.18f);
+            Windows.UI.Color lower = Darken(accentColor, 0.26f);
             LinearGradientBrush brush = new()
             {
                 StartPoint = new Windows.Foundation.Point(0, 0),
-                EndPoint = new Windows.Foundation.Point(0, 1)
+                EndPoint = new Windows.Foundation.Point(1, 1)
             };
 
             brush.GradientStops.Add(new GradientStop
             {
-                Color = accentColor,
+                Color = upper,
                 Offset = 0
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = accentColor,
+                Offset = 0.52
             });
 
             brush.GradientStops.Add(new GradientStop
@@ -954,13 +1087,48 @@ namespace ClipPocketWin
 
             brush.GradientStops.Add(new GradientStop
             {
-                Color = Windows.UI.Color.FromArgb(82, accentColor.R, accentColor.G, accentColor.B),
+                Color = Windows.UI.Color.FromArgb(96, accentColor.R, accentColor.G, accentColor.B),
                 Offset = 0
             });
 
             brush.GradientStops.Add(new GradientStop
             {
-                Color = Windows.UI.Color.FromArgb(56, 10, 15, 24),
+                Color = Windows.UI.Color.FromArgb(54, accentColor.R, accentColor.G, accentColor.B),
+                Offset = 0.58
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Windows.UI.Color.FromArgb(62, 10, 15, 24),
+                Offset = 1
+            });
+
+            return brush;
+        }
+
+        private static LinearGradientBrush CreateBodyBackgroundBrush(Windows.UI.Color accentColor)
+        {
+            LinearGradientBrush brush = new()
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(1, 1)
+            };
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Windows.UI.Color.FromArgb(44, accentColor.R, accentColor.G, accentColor.B),
+                Offset = 0
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Windows.UI.Color.FromArgb(24, accentColor.R, accentColor.G, accentColor.B),
+                Offset = 0.6
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Windows.UI.Color.FromArgb(12, 255, 255, 255),
                 Offset = 1
             });
 
@@ -1029,6 +1197,15 @@ namespace ClipPocketWin
             byte r = (byte)Math.Clamp((int)Math.Round(color.R * (1f - clamped)), 0, 255);
             byte g = (byte)Math.Clamp((int)Math.Round(color.G * (1f - clamped)), 0, 255);
             byte b = (byte)Math.Clamp((int)Math.Round(color.B * (1f - clamped)), 0, 255);
+            return Windows.UI.Color.FromArgb(color.A, r, g, b);
+        }
+
+        private static Windows.UI.Color Lighten(Windows.UI.Color color, float factor)
+        {
+            float clamped = Math.Clamp(factor, 0f, 1f);
+            byte r = (byte)Math.Clamp((int)Math.Round(color.R + ((255 - color.R) * clamped)), 0, 255);
+            byte g = (byte)Math.Clamp((int)Math.Round(color.G + ((255 - color.G) * clamped)), 0, 255);
+            byte b = (byte)Math.Clamp((int)Math.Round(color.B + ((255 - color.B) * clamped)), 0, 255);
             return Windows.UI.Color.FromArgb(color.A, r, g, b);
         }
 
@@ -1607,6 +1784,7 @@ namespace ClipPocketWin
                 Visibility textPreviewVisibility,
                 Brush cardBackgroundBrush,
                 Brush headerBackgroundBrush,
+                Brush bodyBackgroundBrush,
                 Brush iconBackgroundBrush,
                 Brush iconForegroundBrush,
                 string colorPreviewText,
@@ -1637,6 +1815,7 @@ namespace ClipPocketWin
                 TextPreviewVisibility = textPreviewVisibility;
                 CardBackgroundBrush = cardBackgroundBrush;
                 HeaderBackgroundBrush = headerBackgroundBrush;
+                BodyBackgroundBrush = bodyBackgroundBrush;
                 IconBackgroundBrush = iconBackgroundBrush;
                 IconForegroundBrush = iconForegroundBrush;
                 ColorPreviewText = colorPreviewText;
@@ -1702,6 +1881,8 @@ namespace ClipPocketWin
             public Brush CardBackgroundBrush { get; }
 
             public Brush HeaderBackgroundBrush { get; }
+
+            public Brush BodyBackgroundBrush { get; }
 
             public Brush IconBackgroundBrush { get; }
 
@@ -1849,6 +2030,7 @@ namespace ClipPocketWin
         private sealed record ClipboardCardStyle(
             Brush CardBackgroundBrush,
             Brush HeaderBackgroundBrush,
+            Brush BodyBackgroundBrush,
             Brush IconBackgroundBrush,
             Brush IconForegroundBrush);
 
