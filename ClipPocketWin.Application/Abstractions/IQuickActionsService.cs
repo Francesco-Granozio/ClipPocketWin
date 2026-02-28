@@ -12,4 +12,6 @@ public interface IQuickActionsService
     Task<Result> UrlEncodeAsync(ClipboardItem item, CancellationToken cancellationToken = default);
 
     Task<Result> UrlDecodeAsync(ClipboardItem item, CancellationToken cancellationToken = default);
+
+    Task<Result> EditTextAsync(ClipboardItem sourceItem, string editedText, CancellationToken cancellationToken = default);
 }

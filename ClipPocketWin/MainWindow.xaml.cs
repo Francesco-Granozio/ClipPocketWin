@@ -800,6 +800,13 @@ namespace ClipPocketWin
             copyItem.Click += async (_, _) => await CopyOnlyAsync(item.Id);
             flyout.Items.Add(copyItem);
 
+            if (CanUseEditQuickAction(item.Type))
+            {
+                MenuFlyoutItem editItem = new() { Text = "Edit" };
+                editItem.Click += (_, _) => OpenEditTextWindow(item);
+                flyout.Items.Add(editItem);
+            }
+
             MenuFlyoutSubItem quickActionsMenu = new() { Text = "Quick Actions" };
 
             MenuFlyoutItem saveToFileItem = new() { Text = "Save to File" };
@@ -897,6 +904,29 @@ namespace ClipPocketWin
             if (result.IsFailure)
             {
                 _logger?.LogWarning(result.Error?.Exception, "Quick action Save to file failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+            }
+        }
+
+        private void OpenEditTextWindow(ClipboardItem item)
+        {
+            string? initialText = ResolveEditableTextPayload(item);
+            if (initialText is null)
+            {
+                _logger?.LogWarning("Quick action Edit is not available for clipboard item type {ItemType}.", item.Type);
+                return;
+            }
+
+            EditTextWindow editWindow = new(initialText);
+            editWindow.TextCommitted += async (_, args) => await ApplyEditedTextAsync(item, args.EditedText);
+            editWindow.Activate();
+        }
+
+        private async Task ApplyEditedTextAsync(ClipboardItem sourceItem, string editedText)
+        {
+            Result result = await _quickActionsService.EditTextAsync(sourceItem, editedText);
+            if (result.IsFailure)
+            {
+                _logger?.LogWarning(result.Error?.Exception, "Quick action Edit failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
             }
         }
 
@@ -1371,6 +1401,32 @@ namespace ClipPocketWin
                     => item.FilePath ?? item.TextContent,
                 _
                     => null
+            };
+        }
+
+        private static bool CanUseEditQuickAction(ClipboardItemType type)
+        {
+            return type is ClipboardItemType.Text
+                or ClipboardItemType.Code
+                or ClipboardItemType.Url
+                or ClipboardItemType.Email
+                or ClipboardItemType.Phone
+                or ClipboardItemType.Json
+                or ClipboardItemType.Color
+                or ClipboardItemType.RichText;
+        }
+
+        private static string? ResolveEditableTextPayload(ClipboardItem item)
+        {
+            if (!CanUseEditQuickAction(item.Type))
+            {
+                return null;
+            }
+
+            return item.Type switch
+            {
+                ClipboardItemType.RichText => item.RichTextContent?.PlainText ?? item.TextContent ?? string.Empty,
+                _ => item.TextContent ?? string.Empty
             };
         }
 

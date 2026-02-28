@@ -110,6 +110,34 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
         return TransformUrlAsync(item, encode: false, cancellationToken);
     }
 
+    public Task<Result> EditTextAsync(ClipboardItem sourceItem, string editedText, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (sourceItem is null)
+        {
+            return Task.FromResult(Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null.")));
+        }
+
+        if (!IsTextEditableType(sourceItem.Type))
+        {
+            return Task.FromResult(Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Edit quick action supports only text clipboard items.")));
+        }
+
+        string nextText = editedText ?? string.Empty;
+        ClipboardItemType outputType = sourceItem.Type == ClipboardItemType.RichText
+            ? ClipboardItemType.Text
+            : sourceItem.Type;
+
+        ClipboardItem output = new()
+        {
+            Type = outputType,
+            Timestamp = DateTimeOffset.UtcNow,
+            TextContent = nextText
+        };
+
+        return _autoPasteService.SetClipboardContentAsync(output, cancellationToken);
+    }
+
     private async Task<Result> TransformUrlAsync(ClipboardItem item, bool encode, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -246,6 +274,18 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
             _
                 => null
         };
+    }
+
+    private static bool IsTextEditableType(ClipboardItemType type)
+    {
+        return type is ClipboardItemType.Text
+            or ClipboardItemType.Code
+            or ClipboardItemType.Url
+            or ClipboardItemType.Email
+            or ClipboardItemType.Phone
+            or ClipboardItemType.Json
+            or ClipboardItemType.Color
+            or ClipboardItemType.RichText;
     }
 
     private static bool TryBuildBitmapFromDib(byte[] dibPayload, out byte[]? bmpBytes)

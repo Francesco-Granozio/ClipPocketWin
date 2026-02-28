@@ -97,7 +97,7 @@
   - corrected `SendInput` interop struct/union layout in `WindowsAutoPasteService` to match native `INPUT` size,
   - resolves runtime failure `Failed to send Ctrl+V input sequence. Win32Error=87` seen during double-click paste.
 - Added quick actions subset in card context menu:
-  - `Save to File`, `Copy as Base64`, `URL Encode`, `URL Decode`.
+  - `Edit` (textual items only), `Save to File`, `Copy as Base64`, `URL Encode`, `URL Decode`.
 - Added external drag-and-drop from cards:
   - text items drag as text payload,
   - file/image items drag as real file payloads (no internal clipboard rewrite during drag).
