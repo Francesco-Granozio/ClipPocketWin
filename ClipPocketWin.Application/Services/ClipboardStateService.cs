@@ -124,7 +124,12 @@ public sealed class ClipboardStateService : IClipboardStateService
             lock (_syncRoot)
             {
                 _settings = settings;
+                int targetLimit = _settings.EffectiveHistoryLimit;
                 _clipboardItems = historyResult.Value!.ToList();
+                if (_clipboardItems.Count > targetLimit)
+                {
+                    _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+                }
                 _pinnedItems = pinnedResult.Value!.ToList();
                 _snippets = snippetsResult.Value!.ToList();
             }
@@ -394,11 +399,20 @@ public sealed class ClipboardStateService : IClipboardStateService
 
         bool encryptionChanged;
         bool captureRichTextChanged;
+        bool limitEnforced = false;
+        
         lock (_syncRoot)
         {
             encryptionChanged = _settings.EncryptHistory != settings.EncryptHistory;
             captureRichTextChanged = _settings.CaptureRichText != settings.CaptureRichText;
             _settings = settings;
+            
+            int targetLimit = _settings.EffectiveHistoryLimit;
+            if (_clipboardItems.Count > targetLimit)
+            {
+                _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+                limitEnforced = true;
+            }
         }
 
         Result saveSettingsResult = await _settingsRepository.SaveAsync(settings, cancellationToken);
@@ -407,7 +421,7 @@ public sealed class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist settings.", saveSettingsResult.Error?.Exception));
         }
 
-        if (encryptionChanged)
+        if (encryptionChanged || limitEnforced)
         {
             Result persistResult = await PersistHistoryAsync(cancellationToken);
             if (persistResult.IsFailure)

@@ -12,6 +12,12 @@
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
             <FontFamily x:Key="AppleLikeFontFamily">ms-appx:///Assets/Fonts/Inter/Inter-VariableFont_opsz%2Cwght.ttf#Inter</FontFamily>
+            <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="#FF3A3F44" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#66313639" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ToggleSwitchKnobFillOff" Color="#FFFFFFFF" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -10,12 +10,12 @@ Notes:
 - Backup/export-import remains intentionally out of scope unless explicitly requested.
 
 Current SAL snapshot:
-- implemented: 23
-- partial: 6
-- not implemented: 6
+- implemented: 26
+- partial: 5
+- not implemented: 4
 - intentionally excluded: 1
-- strict SAL: 65.71% (`implemented / (total - intentionally excluded)`)
-- weighted SAL: 74.29% (`(implemented + 0.5 * partial) / (total - intentionally excluded)`)
+- strict SAL: 74.29% (`implemented / (total - intentionally excluded)`)
+- weighted SAL: 81.43% (`(implemented + 0.5 * partial) / (total - intentionally excluded)`)
 
 | Source Area | Source File(s) | Windows Status | Windows Mapping / Notes |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Current SAL snapshot:
 | Domain clipboard model | `Models/ClipboardItem.swift` | implemented | `ClipPocketWin.Domain/Models/ClipboardItem.cs`, `ClipboardItemType.cs`, `RichTextContent.cs`. |
 | Domain pinned model | `Models/PinnedClipboardItem.swift` | implemented | `ClipPocketWin.Domain/Models/PinnedClipboardItem.cs`. |
 | Domain snippet model | `Models/Snippet.swift` | implemented | `ClipPocketWin.Domain/Models/Snippet.cs` (placeholder extraction/resolution). |
-| Keyboard shortcut model | `Models/KeyboardShortcut.swift` | partial | `ClipPocketWin.Domain/Models/KeyboardShortcut.cs` present; default spawn shortcut aligned to requested Windows behavior (`Ctrl+ò`). No automatic migration is applied to existing persisted settings; runtime hotkey capture/recording UI is still pending. Added runtime diagnostics logging in `PollingGlobalHotkeyService` for pressed modifiers/target key state transitions plus OEM fallback (`0xBA`/`0xC0`) for layout-dependent `ò` detection. |
+| Keyboard shortcut model | `Models/KeyboardShortcut.swift` | implemented | `ClipPocketWin.Domain/Models/KeyboardShortcut.cs` keeps default `Ctrl+ò`; WinUI settings now supports recording a new shortcut, resetting to default, persisting to `ClipPocketSettings`, and applying changes live via `IGlobalHotkeyService.UpdateShortcutAsync`. |
 | Domain limits | Source hard limits in app/core files | implemented | `ClipPocketWin.Domain/DomainLimits.cs` (500 history, 50 pinned, 200 snippets, 1 MB image persistence). |
 | Result/error explicit handling | Source uses print/errors | implemented | `ClipPocketWin.Shared/ResultPattern/*`, custom `ErrorCode`. |
 | Storage paths and persistence | `ClipPocketApp.swift`, `SettingsManager.swift`, managers | implemented | File repositories in `ClipPocketWin.Infrastructure/Persistence/*` (history/pinned/snippets/settings). |
@@ -32,7 +32,7 @@ Current SAL snapshot:
 | Clipboard ingestion | `ClipPocketApp.swift` `checkClipboard/readClipboardItem` | implemented | `ClipPocketWin.Infrastructure/Clipboard/WindowsClipboardMonitor.cs` + `ClipboardStateService`. |
 | Type classification | `ClipPocketApp.swift` `detectContentType` | implemented | `ClipPocketWin.Infrastructure/Clipboard/ClipboardItemClassifier.cs` (text/code/url/email/phone/json/color + image/file/rich text paths). |
 | Dedupe and limits at runtime | `ClipPocketApp.swift` add logic | implemented | `ClipPocketWin.Application/Services/ClipboardStateService.cs` dedupe + trim + persistence. |
-| Incognito behavior | `ClipPocketApp.swift` | partial | Domain setting exists and `ClipboardStateService` skips storing when incognito; full UI/runtime toggle wiring pending. |
+| Incognito behavior | `ClipPocketApp.swift` | implemented | Domain/runtime behavior existed and is now fully wired in WinUI settings (`Incognito Mode` toggle persists through `SaveSettingsAsync`). |
 | Excluded apps behavior | `Utilities/ExcludedAppsManager.swift`, `Views/ExcludedAppsView.swift` | implemented | Runtime filtering skips capture for matching foreground app identifiers in `ExcludedAppIds`; WinUI editor now updates and persists `ExcludedAppIds` through `ClipPocketSettings`. |
 | App startup orchestration | `ClipPocketApp.swift` launch flow | implemented | `ClipPocketWin/App.xaml.cs` initializes state + starts runtime monitor. |
 | Runtime state debug observability | Source `print` logs | not implemented | Conditional logger was removed; currently only standard `ILogger` logs remain. |
@@ -47,9 +47,9 @@ Current SAL snapshot:
 | Context menu actions | `Views/ClipboardManagerView.swift` | implemented | WinUI card context menu supports `Copy` (without direct paste), `Save to File`, `Copy as Base64`, `URL Encode`, `URL Decode`, plus core state actions (`Pin/Unpin`, `Delete`, `Clear History`). |
 | Drag/drop to external apps | `Views/DraggableClipboardItemCard.swift` | implemented | WinUI cards now support external drag/drop payloads for text, files, and images (image/file drag uses real file payloads instead of internal clipboard copy). |
 | Snippets section UX | `Views/SnippetCard.swift`, `Views/SnippetPlaceholderFormView.swift` | partial | Data model/repository/state exist; interactive UI flow pending. |
-| Settings screen parity | `Views/SettingsView.swift` | not implemented | Settings persistence exists; full UI binding and commands pending. |
+| Settings screen parity | `Views/SettingsView.swift` | implemented | New WinUI `SettingsWindow` opened from panel gear implements requested sections: launch-at-login, keyboard shortcut recorder/reset, history limit + clear history, privacy/incognito + excluded apps manager (running processes + manual add), and about section. Encryption/snippets controls intentionally omitted per requested scope. |
 | Onboarding flow | `Views/OnboardingView.swift` | not implemented | Pending first-run onboarding in WinUI. |
-| Update checker | `Utilities/UpdateChecker.swift` | not implemented | Pending GitHub release checker and UI wiring. |
+| Update checker | `Utilities/UpdateChecker.swift` | partial | Settings now includes `Check for Updates` placeholder button (fittizio). Real GitHub release check workflow remains pending. |
 | Quick actions: text transformations | `Utilities/TextTransformations.swift` | partial | Windows quick-actions subset is available from context menu (`Copy as Base64`, `URL Encode`, `URL Decode`); broader transformation catalog parity is still pending. |
 | Quick actions: QR/share | `Utilities/QuickActions.swift` | not implemented | Pending implementation in Windows stack. |
 | Source app icon cache | `Utilities/SourceAppIconCache.swift` | implemented | WinUI now resolves and caches source application icons (path/process fallback), renders them in card header, and uses icon-derived vibrant accent fallback similarly to Swift behavior. |

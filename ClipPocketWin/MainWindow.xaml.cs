@@ -11,6 +11,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -25,6 +26,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -35,7 +37,7 @@ namespace ClipPocketWin
 {
     public sealed partial class MainWindow : Window
     {
-        private const float MinTintOpacity = 0.18f;
+        private const float MinTintOpacity = 0.12f;
         private const float MaxTintOpacity = 0.79f;
         private const float MinLuminosityOpacity = 0.00f;
         private const float MaxLuminosityOpacity = 0.52f;
@@ -56,6 +58,7 @@ namespace ClipPocketWin
         private readonly IWindowPanelService _windowPanelService;
         private readonly ILogger<MainWindow>? _logger;
         private readonly ObservableCollection<ClipboardCardViewModel> _clipboardCards = [];
+        private SettingsWindow? _settingsWindow;
         private string _searchText = string.Empty;
         private ClipboardSection _selectedSection = ClipboardSection.Recent;
         private ClipboardItemType? _selectedTypeFilter;
@@ -96,9 +99,9 @@ namespace ClipPocketWin
             OverlappedPresenter? presenter = m_AppWindow.Presenter as OverlappedPresenter;
             if (presenter != null)
             {
-                presenter.IsResizable = true;
-                presenter.IsMaximizable = true;
-                presenter.IsMinimizable = true;
+                presenter.IsResizable = false;
+                presenter.IsMaximizable = false;
+                presenter.IsMinimizable = false;
                 presenter.IsAlwaysOnTop = false;
             }
 
@@ -231,6 +234,18 @@ namespace ClipPocketWin
             await PasteAndHideAsync(itemId);
         }
 
+        private void CodePreview_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is not RichTextBlock richTextBlock || richTextBlock.DataContext is not ClipboardCardViewModel card)
+            {
+                return;
+            }
+
+            richTextBlock.Blocks.Clear();
+            Paragraph paragraph = CodeSyntaxHighlighter.BuildParagraph(card.CodeText);
+            richTextBlock.Blocks.Add(paragraph);
+        }
+
         private async void ClipboardCard_DragStarting(UIElement sender, DragStartingEventArgs args)
         {
             if (sender is not FrameworkElement { Tag: Guid itemId })
@@ -241,8 +256,11 @@ namespace ClipPocketWin
             ClipboardItem? item = ResolveClipboardItem(itemId);
             if (item is null)
             {
+                _logger?.LogWarning("Drag started but item {ItemId} not found in state.", itemId);
                 return;
             }
+
+            _logger?.LogInformation("Drag started for item {ItemId}, Type={Type}, FilePath={FilePath}", itemId, item.Type, item.FilePath);
 
             args.Data.RequestedOperation = DataPackageOperation.Copy;
             string? textPayload = ResolveTextPayload(item);
@@ -253,11 +271,13 @@ namespace ClipPocketWin
                     {
                         if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
                         {
+                            _logger?.LogInformation("Drag file resolved: {FilePath}, exists=true", item.FilePath);
                             StorageFile storageFile = await StorageFile.GetFileFromPathAsync(item.FilePath);
                             args.Data.SetStorageItems([storageFile]);
                             return;
                         }
 
+                        _logger?.LogWarning("Drag file path missing or not found: {FilePath}", item.FilePath);
                         break;
                     }
                 case ClipboardItemType.Image:
@@ -301,6 +321,7 @@ namespace ClipPocketWin
 
         private void RefreshClipboardCards()
         {
+            int unfilteredSectionCount = GetSectionItems(_selectedSection).Count;
             List<ClipboardCardViewModel> nextCards = BuildFilteredCards();
 
             const int maxCards = 80;
@@ -317,7 +338,51 @@ namespace ClipPocketWin
 
             bool hasCards = _clipboardCards.Count > 0;
             ClipboardItemsListView.Visibility = hasCards ? Visibility.Visible : Visibility.Collapsed;
-            SampleCardsScrollViewer.Visibility = hasCards ? Visibility.Collapsed : Visibility.Visible;
+            EmptyStateContainer.Visibility = hasCards ? Visibility.Collapsed : Visibility.Visible;
+            if (!hasCards)
+            {
+                UpdateEmptyState(unfilteredSectionCount > 0);
+            }
+        }
+
+        private List<ClipboardItem> GetSectionItems(ClipboardSection section)
+        {
+            return section switch
+            {
+                ClipboardSection.Pinned => _clipboardStateService.PinnedItems.Select(x => x.OriginalItem).ToList(),
+                ClipboardSection.History => _clipboardStateService.ClipboardItems.ToList(),
+                _ => _clipboardStateService.ClipboardItems.Take(20).ToList()
+            };
+        }
+
+        private void UpdateEmptyState(bool hadSectionItemsBeforeFiltering)
+        {
+            if (hadSectionItemsBeforeFiltering)
+            {
+                EmptyStateIcon.Glyph = "\uE8B2";
+                EmptyStateTitle.Text = "No Results";
+                EmptyStateSubtitle.Text = "Try changing search text or type filters.";
+                return;
+            }
+
+            switch (_selectedSection)
+            {
+                case ClipboardSection.Pinned:
+                    EmptyStateIcon.Glyph = "\uE718";
+                    EmptyStateTitle.Text = "No Pinned Items";
+                    EmptyStateSubtitle.Text = "Pinned clipboard items will appear here.";
+                    break;
+                case ClipboardSection.History:
+                    EmptyStateIcon.Glyph = "\uF1DA";
+                    EmptyStateTitle.Text = "No History";
+                    EmptyStateSubtitle.Text = "Your clipboard history is empty.";
+                    break;
+                default:
+                    EmptyStateIcon.Glyph = "\uE823";
+                    EmptyStateTitle.Text = "No Recent Items";
+                    EmptyStateSubtitle.Text = "Your recent clipboard items will appear here.";
+                    break;
+            }
         }
 
         private List<ClipboardCardViewModel> BuildFilteredCards()
@@ -411,6 +476,30 @@ namespace ClipPocketWin
 
             UpdateSectionButtons();
             RefreshClipboardCards();
+        }
+
+        private async void ClosePanelButton_Click(object sender, RoutedEventArgs e)
+        {
+            Result hideResult = await _windowPanelService.HideAsync();
+            if (hideResult.IsFailure)
+            {
+                _logger?.LogWarning(hideResult.Error?.Exception, "Failed to hide panel from close button. Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
+            }
+        }
+
+        private void SettingsButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_settingsWindow is null)
+            {
+                App app = (App)Microsoft.UI.Xaml.Application.Current;
+                _settingsWindow = new SettingsWindow(
+                    _clipboardStateService,
+                    app.Services.GetRequiredService<IGlobalHotkeyService>(),
+                    app.Services.GetService<ILogger<SettingsWindow>>());
+                _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+            }
+
+            _settingsWindow.Activate();
         }
 
         private void TypeFilterButton_Click(object sender, RoutedEventArgs e)
@@ -700,11 +789,13 @@ namespace ClipPocketWin
             bool isImage = previewImage is not null;
             bool isColor = item.Type == ClipboardItemType.Color;
             bool isFile = item.Type == ClipboardItemType.File;
+            bool isCode = item.Type == ClipboardItemType.Code;
 
             Visibility imagePreviewVisibility = isImage ? Visibility.Visible : Visibility.Collapsed;
             Visibility colorPreviewVisibility = isColor ? Visibility.Visible : Visibility.Collapsed;
             Visibility filePreviewVisibility = isFile ? Visibility.Visible : Visibility.Collapsed;
-            Visibility textPreviewVisibility = (!isImage && !isColor && !isFile) ? Visibility.Visible : Visibility.Collapsed;
+            Visibility codePreviewVisibility = isCode ? Visibility.Visible : Visibility.Collapsed;
+            Visibility textPreviewVisibility = (!isImage && !isColor && !isFile && !isCode) ? Visibility.Visible : Visibility.Collapsed;
 
             FileCardInfo fileCardInfo = CreateFileCardInfo(item.FilePath);
             BitmapImage? fileIcon = isFile ? FileTypeIconCache.Resolve(item.FilePath) : null;
@@ -729,6 +820,7 @@ namespace ClipPocketWin
                 imagePreviewVisibility,
                 colorPreviewVisibility,
                 filePreviewVisibility,
+                codePreviewVisibility,
                 textPreviewVisibility,
                 style.CardBackgroundBrush,
                 style.HeaderBackgroundBrush,
@@ -742,7 +834,8 @@ namespace ClipPocketWin
                 "\uE7C3",
                 fileCardInfo.Name,
                 fileCardInfo.Path,
-                fileCardInfo.Size);
+                fileCardInfo.Size,
+                item.TextContent ?? string.Empty);
         }
 
         private static ClipboardCardStyle GetCardStyle(ClipboardItem item, Windows.UI.Color? sourceVibrantColor)
@@ -985,9 +1078,8 @@ namespace ClipPocketWin
             try
             {
                 string dragCacheDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    Path.GetTempPath(),
                     "ClipPocketWin",
-                    "cache",
                     "drag-images");
 
                 Directory.CreateDirectory(dragCacheDirectory);
@@ -1409,6 +1501,7 @@ namespace ClipPocketWin
                 Visibility imagePreviewVisibility,
                 Visibility colorPreviewVisibility,
                 Visibility filePreviewVisibility,
+                Visibility codePreviewVisibility,
                 Visibility textPreviewVisibility,
                 Brush cardBackgroundBrush,
                 Brush headerBackgroundBrush,
@@ -1422,7 +1515,8 @@ namespace ClipPocketWin
                 string fileGlyph,
                 string fileName,
                 string filePath,
-                string fileSize)
+                string fileSize,
+                string codeText)
             {
                 Id = id;
                 TypeLabel = typeLabel;
@@ -1437,6 +1531,7 @@ namespace ClipPocketWin
                 ImagePreviewVisibility = imagePreviewVisibility;
                 ColorPreviewVisibility = colorPreviewVisibility;
                 FilePreviewVisibility = filePreviewVisibility;
+                CodePreviewVisibility = codePreviewVisibility;
                 TextPreviewVisibility = textPreviewVisibility;
                 CardBackgroundBrush = cardBackgroundBrush;
                 HeaderBackgroundBrush = headerBackgroundBrush;
@@ -1451,6 +1546,7 @@ namespace ClipPocketWin
                 FileName = fileName;
                 FilePath = filePath;
                 FileSize = fileSize;
+                CodeText = codeText;
                 _timestampLabel = GetRelativeTimestampLabel(CapturedAt);
             }
 
@@ -1497,6 +1593,8 @@ namespace ClipPocketWin
 
             public Visibility FilePreviewVisibility { get; }
 
+            public Visibility CodePreviewVisibility { get; }
+
             public Visibility TextPreviewVisibility { get; }
 
             public Brush CardBackgroundBrush { get; }
@@ -1524,6 +1622,8 @@ namespace ClipPocketWin
             public string FilePath { get; }
 
             public string FileSize { get; }
+
+            public string CodeText { get; }
 
             public void RefreshRelativeTime()
             {
@@ -1661,33 +1761,40 @@ namespace ClipPocketWin
 
             public static BitmapImage? Resolve(string? filePath)
             {
-                if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+                if (string.IsNullOrWhiteSpace(filePath))
                 {
                     return null;
                 }
 
                 string extension = Path.GetExtension(filePath);
-                string cacheKey = string.IsNullOrWhiteSpace(extension) ? "_noext" : extension;
+                bool isPerFileIcon = extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+                    || extension.Equals(".url", StringComparison.OrdinalIgnoreCase);
+                string cacheKey = isPerFileIcon
+                    ? filePath
+                    : (string.IsNullOrWhiteSpace(extension) ? "_noext" : extension);
                 if (Cache.TryGetValue(cacheKey, out BitmapImage? cached))
                 {
                     return cached;
                 }
 
-                BitmapImage? icon = BuildIcon(filePath, cacheKey);
+                BitmapImage? icon = BuildIcon(filePath, extension, cacheKey, isPerFileIcon);
                 Cache[cacheKey] = icon;
                 return icon;
             }
 
-            private static BitmapImage? BuildIcon(string filePath, string cacheKey)
+            private static BitmapImage? BuildIcon(string filePath, string extension, string cacheKey, bool isPerFileIcon)
             {
                 try
                 {
                     Directory.CreateDirectory(IconsCacheDirectory);
-                    string safeKey = cacheKey.Replace('.', '_');
+                    string safeKey = isPerFileIcon
+                        ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                            System.Text.Encoding.UTF8.GetBytes(cacheKey)))[..16]
+                        : cacheKey.Replace('.', '_');
                     string iconPngPath = Path.Combine(IconsCacheDirectory, safeKey + ".png");
                     if (!File.Exists(iconPngPath))
                     {
-                        using System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(filePath);
+                        using System.Drawing.Icon? icon = ResolveShellIcon(filePath, extension);
                         if (icon is null)
                         {
                             return null;
@@ -1703,6 +1810,137 @@ namespace ClipPocketWin
                 {
                     return null;
                 }
+            }
+
+            private static System.Drawing.Icon? ResolveShellIcon(string filePath, string extension)
+            {
+                string shellPath = File.Exists(filePath)
+                    ? filePath
+                    : string.IsNullOrWhiteSpace(extension) ? "placeholder.bin" : "placeholder" + extension;
+
+                uint attributes = File.Exists(filePath) ? 0u : FileAttributeNormal;
+                uint flags = ShgfiIcon | ShgfiLargeIcon;
+                if (!File.Exists(filePath))
+                {
+                    flags |= ShgfiUseFileAttributes;
+                }
+
+                ShFileInfo info = new();
+                nuint result = SHGetFileInfo(shellPath, attributes, ref info, (uint)Marshal.SizeOf<ShFileInfo>(), flags);
+                if (result == 0 || info.IconHandle == IntPtr.Zero)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    return (System.Drawing.Icon)System.Drawing.Icon.FromHandle(info.IconHandle).Clone();
+                }
+                finally
+                {
+                    _ = DestroyIcon(info.IconHandle);
+                }
+            }
+
+            private const uint FileAttributeNormal = 0x00000080;
+            private const uint ShgfiIcon = 0x000000100;
+            private const uint ShgfiLargeIcon = 0x000000000;
+            private const uint ShgfiUseFileAttributes = 0x000000010;
+
+            [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+            private struct ShFileInfo
+            {
+                public IntPtr IconHandle;
+                public int IconIndex;
+                public uint Attributes;
+
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+                public string DisplayName;
+
+                [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)]
+                public string TypeName;
+            }
+
+            [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+            private static extern nuint SHGetFileInfo(string pszPath, uint fileAttributes, ref ShFileInfo info, uint cbFileInfo, uint flags);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool DestroyIcon(IntPtr hIcon);
+        }
+
+        private static class CodeSyntaxHighlighter
+        {
+            private static readonly Regex TokenRegex = new(
+                @"(""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*')|\b(\d+(?:\.\d+)?)\b|\b(class|struct|enum|interface|public|private|protected|internal|static|readonly|const|void|int|long|string|bool|var|let|if|else|switch|case|for|foreach|while|do|return|new|try|catch|finally|async|await|import|package|function|def|true|false|null|using|namespace)\b|(//.*)$",
+                RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+            public static Paragraph BuildParagraph(string? code)
+            {
+                string text = string.IsNullOrWhiteSpace(code) ? " " : code;
+                const int max = 340;
+                if (text.Length > max)
+                {
+                    text = text[..max];
+                }
+
+                Paragraph paragraph = new();
+                int current = 0;
+
+                foreach (Match match in TokenRegex.Matches(text))
+                {
+                    if (match.Index > current)
+                    {
+                        paragraph.Inlines.Add(new Run
+                        {
+                            Text = text[current..match.Index],
+                            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 228, 236, 247))
+                        });
+                    }
+
+                    Run run = new()
+                    {
+                        Text = match.Value,
+                        Foreground = ResolveBrush(match)
+                    };
+                    paragraph.Inlines.Add(run);
+                    current = match.Index + match.Length;
+                }
+
+                if (current < text.Length)
+                {
+                    paragraph.Inlines.Add(new Run
+                    {
+                        Text = text[current..],
+                        Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 228, 236, 247))
+                    });
+                }
+
+                return paragraph;
+            }
+
+            private static Brush ResolveBrush(Match match)
+            {
+                if (match.Groups[1].Success)
+                {
+                    return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 250, 176, 107));
+                }
+
+                if (match.Groups[2].Success)
+                {
+                    return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 104, 194, 255));
+                }
+
+                if (match.Groups[3].Success)
+                {
+                    return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 193, 142, 255));
+                }
+
+                if (match.Groups[4].Success)
+                {
+                    return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 116, 149, 163));
+                }
+
+                return new SolidColorBrush(Windows.UI.Color.FromArgb(255, 228, 236, 247));
             }
         }
 

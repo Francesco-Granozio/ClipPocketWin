@@ -5,303 +5,326 @@
     Title="ClipPocket">
 
     <Grid Background="Transparent">
-        <Border
-            Background="Transparent"
-            CornerRadius="0"
-            Margin="0">
-            <Grid Margin="20,16,20,16">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+        <Grid Margin="20,16,20,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+            <Grid Grid.Row="0" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <TextBox
-                        x:Name="SearchTextBox"
-                        Grid.Column="0"
-                        PlaceholderText="Search clipboard..."
-                        TextChanged="SearchTextBox_TextChanged"
-                        Background="#22FFFFFF"
-                        BorderBrush="#33FFFFFF"
-                        BorderThickness="1"
-                        Foreground="#F0FFFFFF"
-                        FontFamily="{StaticResource AppleLikeFontFamily}" />
+                <TextBox
+                    x:Name="SearchTextBox"
+                    Grid.Column="0"
+                    Height="40"
+                    PlaceholderText="Search clipboard..."
+                    TextChanged="SearchTextBox_TextChanged"
+                    Background="#1AFFFFFF"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    Foreground="#F0FFFFFF"
+                    FontFamily="{StaticResource AppleLikeFontFamily}" />
 
-                    <StackPanel
-                        Grid.Column="1"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        Margin="12,0,0,0">
-                        <Button
-                            Content="Excluded Apps"
-                            Click="ExcludedAppsButton_Click" />
-                        <Button
-                            Content="Clear History"
-                            Click="ClearHistoryButton_Click" />
-                    </StackPanel>
-                </Grid>
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    Margin="14,0,0,0">
+                    <Button
+                        x:Name="PinnedTabButton"
+                        Content="Pinned"
+                        Click="SectionButton_Click"
+                        Tag="Pinned" />
+                    <Button
+                        x:Name="RecentTabButton"
+                        Content="Recent"
+                        Click="SectionButton_Click"
+                        Tag="Recent" />
+                    <Button
+                        x:Name="HistoryTabButton"
+                        Content="History"
+                        Click="SectionButton_Click"
+                        Tag="History" />
+                </StackPanel>
 
-                <Grid Grid.Row="1" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <ScrollViewer
-                        Grid.Column="0"
-                        HorizontalScrollBarVisibility="Auto"
-                        VerticalScrollBarVisibility="Disabled"
-                        HorizontalScrollMode="Enabled"
-                        VerticalScrollMode="Disabled">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Button Content="All" Tag="All" Click="TypeFilterButton_Click" />
-                            <Button Content="Text" Tag="Text" Click="TypeFilterButton_Click" />
-                            <Button Content="Code" Tag="Code" Click="TypeFilterButton_Click" />
-                            <Button Content="URL" Tag="Url" Click="TypeFilterButton_Click" />
-                            <Button Content="Email" Tag="Email" Click="TypeFilterButton_Click" />
-                            <Button Content="Phone" Tag="Phone" Click="TypeFilterButton_Click" />
-                            <Button Content="JSON" Tag="Json" Click="TypeFilterButton_Click" />
-                            <Button Content="Color" Tag="Color" Click="TypeFilterButton_Click" />
-                            <Button Content="Image" Tag="Image" Click="TypeFilterButton_Click" />
-                            <Button Content="File" Tag="File" Click="TypeFilterButton_Click" />
-                            <Button Content="Rich Text" Tag="RichText" Click="TypeFilterButton_Click" />
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                        <Button
-                            x:Name="PinnedTabButton"
-                            Content="Pinned"
-                            Click="SectionButton_Click"
-                            Tag="Pinned" />
-                        <Button
-                            x:Name="RecentTabButton"
-                            Content="Recent"
-                            Click="SectionButton_Click"
-                            Tag="Recent" />
-                        <Button
-                            x:Name="HistoryTabButton"
-                            Content="History"
-                            Click="SectionButton_Click"
-                            Tag="History" />
-                    </StackPanel>
-                </Grid>
-
-                <Grid Grid.Row="2">
-                    <ListView
-                        x:Name="ClipboardItemsListView"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        HorizontalAlignment="Stretch"
-                        IsItemClickEnabled="False"
-                        Padding="12,8,12,8"
-                        ScrollViewer.HorizontalScrollMode="Enabled"
-                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                        ScrollViewer.VerticalScrollMode="Disabled"
-                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                        SelectionMode="None"
-                        Visibility="Collapsed">
-                        <ListView.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <ItemsStackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ListView.ItemsPanel>
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    Width="220"
-                                    Height="220"
-                                    Margin="0,0,12,0"
-                                    Background="{Binding CardBackgroundBrush}"
-                                    BorderBrush="#33FFFFFF"
-                                    BorderThickness="1"
-                                    CanDrag="True"
-                                    CornerRadius="14"
-                                    Padding="0"
-                                    DoubleTapped="ClipboardCard_DoubleTapped"
-                                    DragStarting="ClipboardCard_DragStarting"
-                                    PointerEntered="Card_PointerEntered"
-                                    PointerExited="Card_PointerExited"
-                                    RenderTransformOrigin="0.5,0.5"
-                                    RightTapped="ClipboardCard_RightTapped"
-                                    Tag="{Binding Id}"
-                                    >
-                                    <Border.RenderTransform>
-                                        <ScaleTransform ScaleX="1" ScaleY="1" />
-                                    </Border.RenderTransform>
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <Border
-                                            Grid.Row="0"
-                                            Background="{Binding HeaderBackgroundBrush}"
-                                            CornerRadius="14,14,0,0"
-                                            Padding="12,10">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Border
-                                                    Grid.Column="0"
-                                                    Width="34"
-                                                    Height="34"
-                                                    Margin="0,0,10,0"
-                                                    Background="{Binding IconBackgroundBrush}"
-                                                    CornerRadius="8">
-                                                    <Grid>
-                                                        <Image
-                                                            Width="24"
-                                                            Height="24"
-                                                            HorizontalAlignment="Center"
-                                                            VerticalAlignment="Center"
-                                                            Source="{Binding SourceAppIcon}"
-                                                            Visibility="{Binding SourceIconVisibility}" />
-                                                        <FontIcon
-                                                            FontFamily="Segoe Fluent Icons"
-                                                            FontSize="16"
-                                                            Foreground="{Binding IconForegroundBrush}"
-                                                            Glyph="{Binding IconGlyph}"
-                                                            HorizontalAlignment="Center"
-                                                            VerticalAlignment="Center"
-                                                            Visibility="{Binding SourceIconFallbackVisibility}" />
-                                                    </Grid>
-                                                </Border>
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="14"
-                                                        FontWeight="SemiBold"
-                                                        Foreground="White"
-                                                        Text="{Binding TypeLabel}" />
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="11"
-                                                        Foreground="#99FFFFFF"
-                                                        Text="{Binding TimestampLabel}" />
-                                                </StackPanel>
-                                                <TextBlock
-                                                    Grid.Column="2"
-                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                    FontSize="10"
-                                                    Foreground="#BFFFE08A"
-                                                    Text="{Binding PinLabel}"
-                                                    VerticalAlignment="Top" />
-                                            </Grid>
-                                        </Border>
-                                        <Border Grid.Row="1" Padding="12,10">
-                                            <Grid>
-                                                <Border
-                                                    CornerRadius="8"
-                                                    HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Stretch"
-                                                    Visibility="{Binding ImagePreviewVisibility}">
-                                                    <Image
-                                                        Source="{Binding PreviewImage}"
-                                                        Stretch="Uniform" />
-                                                </Border>
-                                                <Grid Visibility="{Binding ColorPreviewVisibility}">
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="30"
-                                                        FontWeight="Bold"
-                                                        Foreground="{Binding ColorPreviewForegroundBrush}"
-                                                        HorizontalAlignment="Center"
-                                                        Text="{Binding ColorPreviewText}"
-                                                        TextAlignment="Center"
-                                                        TextTrimming="CharacterEllipsis"
-                                                        VerticalAlignment="Center" />
-                                                </Grid>
-                                                <StackPanel
-                                                    Spacing="6"
-                                                    VerticalAlignment="Top"
-                                                    Visibility="{Binding FilePreviewVisibility}">
-                                                    <Grid>
-                                                        <Image
-                                                            Width="42"
-                                                            Height="42"
-                                                            HorizontalAlignment="Left"
-                                                            Source="{Binding FileIcon}"
-                                                            VerticalAlignment="Center"
-                                                            Visibility="{Binding FileIconVisibility}" />
-                                                        <FontIcon
-                                                            FontFamily="Segoe Fluent Icons"
-                                                            FontSize="36"
-                                                            Foreground="#FFE4EAF8"
-                                                            Glyph="{Binding FileGlyph}"
-                                                            HorizontalAlignment="Left"
-                                                            VerticalAlignment="Center"
-                                                            Visibility="{Binding FileGlyphVisibility}" />
-                                                    </Grid>
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="14"
-                                                        FontWeight="SemiBold"
-                                                        Foreground="#FFF5F8FF"
-                                                        Text="{Binding FileName}" />
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="11"
-                                                        Foreground="#C8D7E8FF"
-                                                        MaxLines="2"
-                                                        Text="{Binding FilePath}"
-                                                        TextTrimming="CharacterEllipsis"
-                                                        TextWrapping="Wrap" />
-                                                    <TextBlock
-                                                        FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                        FontSize="11"
-                                                        Foreground="#BFD2E4FF"
-                                                        Text="{Binding FileSize}" />
-                                                </StackPanel>
-                                                <TextBlock
-                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
-                                                    FontSize="12"
-                                                    Foreground="#CCF1F6FF"
-                                                    MaxLines="8"
-                                                    Text="{Binding PreviewText}"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    TextWrapping="Wrap"
-                                                    Visibility="{Binding TextPreviewVisibility}" />
-                                            </Grid>
-                                        </Border>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-
-                    <Border
-                        x:Name="SampleCardsScrollViewer"
-                        Padding="12"
-                        Background="#1AFFFFFF"
-                        CornerRadius="12"
-                        Visibility="Collapsed">
-                        <StackPanel Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock
-                                FontFamily="{StaticResource AppleLikeFontFamily}"
-                                FontSize="16"
-                                Foreground="#DDEEF6FF"
-                                HorizontalAlignment="Center"
-                                Text="No items for current filters" />
-                            <TextBlock
-                                FontFamily="{StaticResource AppleLikeFontFamily}"
-                                FontSize="12"
-                                Foreground="#99FFFFFF"
-                                HorizontalAlignment="Center"
-                                Text="Try changing search, section or type filter." />
-                        </StackPanel>
-                    </Border>
-                </Grid>
+                <StackPanel
+                    Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="12,0,0,0">
+                    <Button
+                        Width="36"
+                        Height="36"
+                        Padding="0"
+                        Click="SettingsButton_Click"
+                        ToolTipService.ToolTip="Settings">
+                        <SymbolIcon Symbol="Setting" />
+                    </Button>
+                    <Button
+                        Width="36"
+                        Height="36"
+                        Padding="0"
+                        Click="ClosePanelButton_Click"
+                        ToolTipService.ToolTip="Close">
+                        <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE711;" />
+                    </Button>
+                </StackPanel>
             </Grid>
-        </Border>
+
+            <StackPanel
+                Grid.Row="1"
+                Margin="0,0,0,12"
+                Orientation="Horizontal"
+                Spacing="6">
+                <Button Content="All" Tag="All" Click="TypeFilterButton_Click" />
+                <Button Content="Text" Tag="Text" Click="TypeFilterButton_Click" />
+                <Button Content="Rich Text" Tag="RichText" Click="TypeFilterButton_Click" />
+                <Button Content="Code" Tag="Code" Click="TypeFilterButton_Click" />
+                <Button Content="URL" Tag="Url" Click="TypeFilterButton_Click" />
+                <Button Content="Email" Tag="Email" Click="TypeFilterButton_Click" />
+                <Button Content="Image" Tag="Image" Click="TypeFilterButton_Click" />
+                <Button Content="File" Tag="File" Click="TypeFilterButton_Click" />
+                <Button Content="Color" Tag="Color" Click="TypeFilterButton_Click" />
+                <Button Content="JSON" Tag="Json" Click="TypeFilterButton_Click" />
+                <Button Content="Phone" Tag="Phone" Click="TypeFilterButton_Click" />
+            </StackPanel>
+
+            <Grid Grid.Row="2">
+                <ListView
+                    x:Name="ClipboardItemsListView"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    HorizontalAlignment="Stretch"
+                    IsItemClickEnabled="False"
+                    Padding="12,8,12,8"
+                    ScrollViewer.HorizontalScrollMode="Enabled"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                    ScrollViewer.VerticalScrollMode="Disabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    SelectionMode="None"
+                    Visibility="Collapsed">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border
+                                Width="220"
+                                Height="220"
+                                Margin="0,0,12,0"
+                                Background="{Binding CardBackgroundBrush}"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1"
+                                CanDrag="True"
+                                CornerRadius="14"
+                                Padding="0"
+                                DoubleTapped="ClipboardCard_DoubleTapped"
+                                DragStarting="ClipboardCard_DragStarting"
+                                PointerEntered="Card_PointerEntered"
+                                PointerExited="Card_PointerExited"
+                                RenderTransformOrigin="0.5,0.5"
+                                RightTapped="ClipboardCard_RightTapped"
+                                Tag="{Binding Id}">
+                                <Border.RenderTransform>
+                                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                                </Border.RenderTransform>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Border
+                                        Grid.Row="0"
+                                        Background="{Binding HeaderBackgroundBrush}"
+                                        CornerRadius="14,14,0,0"
+                                        Padding="12,10">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border
+                                                Grid.Column="0"
+                                                Width="34"
+                                                Height="34"
+                                                Margin="0,0,10,0"
+                                                Background="{Binding IconBackgroundBrush}"
+                                                CornerRadius="8">
+                                                <Grid>
+                                                    <Image
+                                                        Width="24"
+                                                        Height="24"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Source="{Binding SourceAppIcon}"
+                                                        Visibility="{Binding SourceIconVisibility}" />
+                                                    <FontIcon
+                                                        FontFamily="Segoe Fluent Icons"
+                                                        FontSize="16"
+                                                        Foreground="{Binding IconForegroundBrush}"
+                                                        Glyph="{Binding IconGlyph}"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding SourceIconFallbackVisibility}" />
+                                                </Grid>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="14"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="White"
+                                                    Text="{Binding TypeLabel}" />
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="11"
+                                                    Foreground="#99FFFFFF"
+                                                    Text="{Binding TimestampLabel}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                FontSize="10"
+                                                Foreground="#BFFFE08A"
+                                                Text="{Binding PinLabel}"
+                                                VerticalAlignment="Top" />
+                                        </Grid>
+                                    </Border>
+                                    <Border Grid.Row="1" Padding="12,10">
+                                        <Grid>
+                                            <Border
+                                                CornerRadius="8"
+                                                HorizontalAlignment="Stretch"
+                                                VerticalAlignment="Stretch"
+                                                Visibility="{Binding ImagePreviewVisibility}">
+                                                <Image
+                                                    Source="{Binding PreviewImage}"
+                                                    Stretch="Uniform" />
+                                            </Border>
+                                            <Grid Visibility="{Binding ColorPreviewVisibility}">
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="30"
+                                                    FontWeight="Bold"
+                                                    Foreground="{Binding ColorPreviewForegroundBrush}"
+                                                    HorizontalAlignment="Center"
+                                                    Text="{Binding ColorPreviewText}"
+                                                    TextAlignment="Center"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    VerticalAlignment="Center" />
+                                            </Grid>
+                                            <StackPanel
+                                                Spacing="6"
+                                                VerticalAlignment="Top"
+                                                Visibility="{Binding FilePreviewVisibility}">
+                                                <Grid>
+                                                    <Image
+                                                        Width="42"
+                                                        Height="42"
+                                                        HorizontalAlignment="Left"
+                                                        Source="{Binding FileIcon}"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding FileIconVisibility}" />
+                                                    <FontIcon
+                                                        FontFamily="Segoe Fluent Icons"
+                                                        FontSize="36"
+                                                        Foreground="#FFE4EAF8"
+                                                        Glyph="{Binding FileGlyph}"
+                                                        HorizontalAlignment="Left"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding FileGlyphVisibility}" />
+                                                </Grid>
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="14"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="#FFF5F8FF"
+                                                    Text="{Binding FileName}" />
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="11"
+                                                    Foreground="#C8D7E8FF"
+                                                    MaxLines="2"
+                                                    Text="{Binding FilePath}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="Wrap" />
+                                                <TextBlock
+                                                    FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                    FontSize="11"
+                                                    Foreground="#BFD2E4FF"
+                                                    Text="{Binding FileSize}" />
+                                            </StackPanel>
+                                            <RichTextBlock
+                                                FontFamily="Consolas"
+                                                FontSize="12"
+                                                Foreground="#FFDDE7FF"
+                                                IsTextSelectionEnabled="False"
+                                                Loaded="CodePreview_Loaded"
+                                                MaxHeight="142"
+                                                TextWrapping="WrapWholeWords"
+                                                Visibility="{Binding CodePreviewVisibility}" />
+                                            <TextBlock
+                                                FontFamily="{StaticResource AppleLikeFontFamily}"
+                                                FontSize="12"
+                                                Foreground="#CCF1F6FF"
+                                                MaxLines="8"
+                                                Text="{Binding PreviewText}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap"
+                                                Visibility="{Binding TextPreviewVisibility}" />
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
+                <Border
+                    x:Name="EmptyStateContainer"
+                    Padding="18,16"
+                    Background="#14000000"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Visibility="Collapsed">
+                    <StackPanel Width="220" Spacing="8" HorizontalAlignment="Center">
+                        <FontIcon
+                            x:Name="EmptyStateIcon"
+                            FontFamily="Segoe Fluent Icons"
+                            FontSize="50"
+                            Foreground="#8CD6E6FF"
+                            HorizontalAlignment="Center" />
+                        <TextBlock
+                            x:Name="EmptyStateTitle"
+                            FontFamily="{StaticResource AppleLikeFontFamily}"
+                            FontSize="28"
+                            FontWeight="SemiBold"
+                            Foreground="#E6FFFFFF"
+                            HorizontalAlignment="Center"
+                            TextAlignment="Center" />
+                        <TextBlock
+                            x:Name="EmptyStateSubtitle"
+                            FontFamily="{StaticResource AppleLikeFontFamily}"
+                            FontSize="12"
+                            Foreground="#A6FFFFFF"
+                            HorizontalAlignment="Center"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
     </Grid>
 </Window>

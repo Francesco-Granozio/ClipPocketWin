@@ -1,0 +1,168 @@
+<Window
+    x:Class="ClipPocketWin.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings">
+
+    <Grid Background="#FF23282B" KeyDown="RootGrid_KeyDown">
+        <Grid.Resources>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#FF1E1E1E" Padding="16,12" BorderBrush="#22FFFFFF" BorderThickness="0,0,0,1">
+            <TextBlock
+                Text="Settings"
+                FontFamily="{StaticResource AppleLikeFontFamily}"
+                FontSize="24"
+                FontWeight="SemiBold"
+                Foreground="#F2FFFFFF" />
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="#FF23282B">
+            <StackPanel Spacing="16" Padding="16,16,16,18" HorizontalAlignment="Stretch">
+                <TextBlock Text="GENERAL" Foreground="#99FFFFFF" FontSize="16" FontWeight="SemiBold" />
+                <Border Background="#FF1F2324" CornerRadius="12" Padding="12,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Launch at Login" Foreground="#F2FFFFFF" FontSize="19" FontWeight="SemiBold" />
+                            <TextBlock Text="Start ClipPocket automatically when you log in" Foreground="#AAFFFFFF" FontSize="13" />
+                        </StackPanel>
+                        <ToggleSwitch
+                            x:Name="LaunchAtLoginToggle"
+                            Grid.Column="1"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            MinWidth="0"
+                            OnContent="{x:Null}"
+                            OffContent="{x:Null}"
+                            Toggled="LaunchAtLoginToggle_Toggled" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="KEYBOARD SHORTCUT" Foreground="#99FFFFFF" FontSize="16" FontWeight="SemiBold" />
+                <Border Background="#FF1F2324" CornerRadius="12" Padding="12,12">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Click to record a new shortcut" Foreground="#AAFFFFFF" FontSize="13" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button
+                                x:Name="RecordShortcutButton"
+                                Grid.Column="0"
+                                HorizontalAlignment="Stretch"
+                                Click="RecordShortcutButton_Click" />
+                            <Button
+                                Grid.Column="1"
+                                Margin="10,0,0,0"
+                                Click="ResetShortcutButton_Click"
+                                ToolTipService.ToolTip="Reset to Ctrl+ò">
+                                <FontIcon FontFamily="Segoe Fluent Icons" Glyph="&#xE72C;" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="DATA MANAGEMENT" Foreground="#99FFFFFF" FontSize="16" FontWeight="SemiBold" />
+                <Border Background="#FF1F2324" CornerRadius="12" Padding="12,12">
+                    <StackPanel Spacing="14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Limit History Size" Foreground="#F2FFFFFF" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="Automatically trim old history items" Foreground="#AAFFFFFF" FontSize="13" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                x:Name="HistoryLimitToggle"
+                                Grid.Column="1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                MinWidth="0"
+                                OnContent="{x:Null}"
+                                OffContent="{x:Null}"
+                                Toggled="HistoryLimitToggle_Toggled" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Maximum History Items" Foreground="#F2FFFFFF" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock x:Name="HistoryLimitDescription" Foreground="#AAFFFFFF" FontSize="13" />
+                            </StackPanel>
+                            <NumberBox
+                                x:Name="MaxHistoryNumberBox"
+                                Grid.Column="1"
+                                Width="155"
+                                HorizontalAlignment="Right"
+                                SmallChange="10"
+                                SpinButtonPlacementMode="Inline"
+                                ValidationMode="InvalidInputOverwritten"
+                                ValueChanged="MaxHistoryNumberBox_ValueChanged"
+                                KeyUp="MaxHistoryNumberBox_KeyUp" />
+                        </Grid>
+
+                        <Button
+                            Content="Clear History"
+                            HorizontalAlignment="Left"
+                            Click="ClearHistoryButton_Click"
+                            Foreground="White"
+                            Background="#FFC43A31"
+                            BorderBrush="#FFD95145"
+                            BorderThickness="1" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="PRIVACY" Foreground="#99FFFFFF" FontSize="16" FontWeight="SemiBold" />
+                <Border Background="#FF1F2324" CornerRadius="12" Padding="12,12">
+                    <StackPanel Spacing="12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Incognito Mode" Foreground="#F2FFFFFF" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="Pause clipboard monitoring and persistence" Foreground="#AAFFFFFF" FontSize="13" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                x:Name="IncognitoModeToggle"
+                                Grid.Column="1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                MinWidth="0"
+                                OnContent="{x:Null}"
+                                OffContent="{x:Null}"
+                                Toggled="IncognitoModeToggle_Toggled" />
+                        </Grid>
+                        <Button Content="Excluded Applications" HorizontalAlignment="Left" Click="ExcludedApplicationsButton_Click" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="ABOUT" Foreground="#99FFFFFF" FontSize="16" FontWeight="SemiBold" />
+                <Border Background="#FF1F2324" CornerRadius="12" Padding="12,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="ClipPocket" Foreground="#F2FFFFFF" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock x:Name="VersionText" Foreground="#AAFFFFFF" FontSize="13" />
+                        <TextBlock Text="Created by Francesco Granozio" Foreground="#AAFFFFFF" FontSize="13" />
+                        <TextBlock Text="granoziofrancesco.1@gmail.com" Foreground="#AAFFFFFF" FontSize="13" />
+                        <Button Content="Check for Updates" HorizontalAlignment="Left" Margin="0,10,0,0" Click="CheckForUpdatesButton_Click" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

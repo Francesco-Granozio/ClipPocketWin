@@ -450,9 +450,17 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             StringBuilder pathBuilder = new((int)length + 1);
             _ = DragQueryFile(handle, fileIndex, pathBuilder, (uint)pathBuilder.Capacity);
             string path = pathBuilder.ToString();
-            if (!string.IsNullOrWhiteSpace(path))
+            
+            try
             {
-                paths.Add(path);
+                if (!string.IsNullOrWhiteSpace(path) && !System.IO.Directory.Exists(path))
+                {
+                    paths.Add(path);
+                }
+            }
+            catch
+            {
+                // Ignore paths that throw exceptions (e.g. virtual folders like the Recycle Bin)
             }
         }
 

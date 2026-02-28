@@ -102,17 +102,36 @@
   - text items drag as text payload,
   - file/image items drag as real file payloads (no internal clipboard rewrite during drag).
 - Added `docs/PARITY_MATRIX.md` with full Source->Windows parity tracking, including pre-existing implemented scope and pending items (backup excluded).
+- Reworked panel header and action layout to match the macOS reference flow:
+  - search + categories aligned to the left,
+  - `Pinned/Recent/History` tabs plus settings/close controls aligned to the right,
+  - acrylic transparency tuned slightly lower for a lighter glass effect.
+- Added section-aware empty states in main panel:
+  - dedicated visuals/copy for empty `Pinned`, `Recent`, and `History`,
+  - dedicated fallback message when filters/search return no matches.
+- Improved file card icon parity:
+  - file type icon resolution now uses Windows Shell (`SHGetFileInfo`) by extension with safe fallback, not only direct file extraction.
+- Added syntax-highlighted code card preview:
+  - code cards now render token-colored `RichTextBlock` preview for better readability.
+- Added full requested WinUI settings window (opened by gear button):
+  - `General`: launch at login,
+  - `Keyboard Shortcut`: record shortcut + reset to default `Ctrl+ò`, with live `UpdateShortcutAsync` apply,
+  - `Data Management`: history limit toggle/value and clear history,
+  - `Privacy`: incognito mode + excluded applications manager (running process list + manual input),
+  - `About`: app name/version + author/email,
+  - `Check for updates`: placeholder/fake action button.
+- Added launch-at-login registrar for Windows:
+  - best-effort HKCU Run-key registration via `LaunchAtLoginRegistrar`.
 
 ## SAL
-- implemented: 23
-- partial: 6
-- not implemented: 6
+- implemented: 26
+- partial: 5
+- not implemented: 4
 - intentionally excluded: 1
-- strict SAL: 65.71%
-- weighted SAL (partial=0.5): 74.29%
+- strict SAL: 74.29%
+- weighted SAL (partial=0.5): 81.43%
 
 ## Pending (next milestone)
 - Full MVVM UI migration (snippets/settings full flows and advanced interactions).
-- Settings UI binding to `ClipPocketSettings` and persistence commands.
-- Remaining quick-action backlog beyond current subset (QR/share and full transformation catalog), onboarding, update checker.
+- Remaining quick-action backlog beyond current subset (QR/share and full transformation catalog), onboarding, real update checker backend.
 - Test projects (unit + integration) and parity validation suite.
