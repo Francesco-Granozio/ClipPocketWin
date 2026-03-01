@@ -29,12 +29,6 @@ public enum ErrorCode
     PinnedItemNotFound = 1201,
     PinnedItemsLimitExceeded = 1202,
 
-    SnippetInvalid = 1300,
-    SnippetInvalidTemplate = 1301,
-    SnippetPlaceholderMissing = 1302,
-    SnippetLimitExceeded = 1303,
-    SnippetNotFound = 1304,
-
     SettingsInvalid = 1400,
     SettingsRangeInvalid = 1401,
     SettingsShortcutInvalid = 1402,
@@ -63,13 +57,6 @@ public enum ErrorCode
     SerializationFailed = 3100,
     DeserializationFailed = 3101,
     DataFormatInvalid = 3102,
-
-    // Infrastructure crypto errors (3200-3299)
-    EncryptionFailed = 3200,
-    DecryptionFailed = 3201,
-    EncryptionKeyUnavailable = 3202,
-    EncryptionKeyInvalid = 3203,
-    EncryptedPayloadInvalid = 3204,
 
     // Host/startup errors (3400-3499)
     AppStartupFailed = 3400,

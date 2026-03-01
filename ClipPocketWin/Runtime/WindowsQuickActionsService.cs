@@ -4,7 +4,6 @@ using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -312,7 +311,7 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
             colorTableEntries = 1 << bitsPerPixel;
         }
 
-        int maskBytes = (compression == 3 || compression == 6) ? 12 : 0;
+        int maskBytes = (compression is 3 or 6) ? 12 : 0;
         int colorTableBytes = colorTableEntries * 4;
         int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
         if (pixelDataOffset > int.MaxValue - dibPayload.Length)

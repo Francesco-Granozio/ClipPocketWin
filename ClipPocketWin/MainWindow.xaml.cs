@@ -5,15 +5,14 @@ using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI;
-using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -24,15 +23,14 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
-using WinRT;
 using WinRT.Interop;
 
 namespace ClipPocketWin
@@ -85,7 +83,6 @@ namespace ClipPocketWin
         private ClipboardSection _selectedSection = ClipboardSection.History;
         private ClipboardItemType? _selectedTypeFilter;
         private DesktopAcrylicController? _acrylicController;
-        private SystemBackdropConfiguration? _configurationSource;
         private DispatcherQueueTimer? _delayedReadabilityTimer;
         private DispatcherQueueTimer? _continuousReadabilityTimer;
         private DispatcherQueueTimer? _relativeTimeTimer;
@@ -203,96 +200,6 @@ namespace ClipPocketWin
             Closed += Window_Closed;
         }
 
-        private bool TrySetAcrylicBackdrop()
-        {
-            if (!DesktopAcrylicController.IsSupported())
-            {
-                return false;
-            }
-
-            _configurationSource = new SystemBackdropConfiguration
-            {
-                Theme = SystemBackdropTheme.Dark,
-                IsInputActive = true
-            };
-
-            _acrylicController = new DesktopAcrylicController
-            {
-                // ── KEY SETTINGS FOR REAL GLASS TRANSPARENCY ──
-                // TintColor: the color overlay on the blurred background
-                // TintOpacity: 0 = no tint (fully transparent), 1 = solid tint
-                // LuminosityOpacity: 0 = maximum see-through, 1 = opaque luminosity layer
-                TintColor = BaseTintColor,
-                TintOpacity = MinTintOpacity,
-                LuminosityOpacity = MinLuminosityOpacity,
-                FallbackColor = Windows.UI.Color.FromArgb(200, BaseTintColor.R, BaseTintColor.G, BaseTintColor.B)
-            };
-
-            // Attach to the window
-            _acrylicController.AddSystemBackdropTarget(
-                this.As<ICompositionSupportsSystemBackdrop>());
-            _acrylicController.SetSystemBackdropConfiguration(_configurationSource);
-
-            return true;
-        }
-
-        private void TriggerDelayedReadabilityCheck(double delaySeconds = PostMoveReadabilityDelaySeconds)
-        {
-            if (!IsWindowVisibleForSampling())
-            {
-                _delayedReadabilityTimer?.Stop();
-                return;
-            }
-
-            if (_delayedReadabilityTimer == null)
-            {
-                _delayedReadabilityTimer = DispatcherQueue.CreateTimer();
-                _delayedReadabilityTimer.Tick += (s, e) =>
-                {
-                    _delayedReadabilityTimer.Stop();
-                    if (IsWindowVisibleForSampling())
-                    {
-                        _ = RefreshBackdropProtectionAsync();
-                    }
-                };
-            }
-
-            _delayedReadabilityTimer.Stop();
-            _delayedReadabilityTimer.Interval = TimeSpan.FromSeconds(delaySeconds);
-            _delayedReadabilityTimer.Start();
-        }
-
-        private void EnsureContinuousReadabilityCheck()
-        {
-            if (!IsWindowVisibleForSampling())
-            {
-                _continuousReadabilityTimer?.Stop();
-                return;
-            }
-
-            if (_continuousReadabilityTimer == null)
-            {
-                _continuousReadabilityTimer = DispatcherQueue.CreateTimer();
-                _continuousReadabilityTimer.Interval = TimeSpan.FromSeconds(ContinuousReadabilityIntervalSeconds);
-                _continuousReadabilityTimer.IsRepeating = true;
-                _continuousReadabilityTimer.Tick += ContinuousReadabilityTimer_Tick;
-            }
-
-            if (!_continuousReadabilityTimer.IsRunning)
-            {
-                _continuousReadabilityTimer.Start();
-            }
-        }
-
-        private void StopContinuousReadabilityCheck()
-        {
-            if (_continuousReadabilityTimer == null)
-            {
-                return;
-            }
-
-            _continuousReadabilityTimer.Stop();
-        }
 
         private void ContinuousReadabilityTimer_Tick(DispatcherQueueTimer sender, object args)
         {
@@ -754,14 +661,6 @@ namespace ClipPocketWin
             RefreshClipboardCards();
         }
 
-        private async void ClosePanelButton_Click(object sender, RoutedEventArgs e)
-        {
-            Result hideResult = await _windowPanelService.HideAsync();
-            if (hideResult.IsFailure)
-            {
-                _logger?.LogWarning(hideResult.Error?.Exception, "Failed to hide panel from close button. Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
-            }
-        }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e)
         {
@@ -991,11 +890,6 @@ namespace ClipPocketWin
             }
         }
 
-        private async void ClearHistoryButton_Click(object sender, RoutedEventArgs e)
-        {
-            await ClearHistoryAsync();
-        }
-
         private async Task ClearHistoryAsync()
         {
             ContentDialog dialog = new()
@@ -1018,46 +912,6 @@ namespace ClipPocketWin
             if (clearResult.IsFailure)
             {
                 _logger?.LogWarning(clearResult.Error?.Exception, "Failed to clear clipboard history. Code {ErrorCode}: {Message}", clearResult.Error?.Code, clearResult.Error?.Message);
-            }
-        }
-
-        private async void ExcludedAppsButton_Click(object sender, RoutedEventArgs e)
-        {
-            TextBox editor = new()
-            {
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap,
-                MinHeight = 220,
-                Text = string.Join(Environment.NewLine, _clipboardStateService.Settings.ExcludedAppIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
-            };
-
-            ContentDialog dialog = new()
-            {
-                XamlRoot = ResolveXamlRoot(),
-                Title = "Excluded Applications",
-                Content = editor,
-                PrimaryButtonText = "Save",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Primary
-            };
-
-            ContentDialogResult result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
-            {
-                return;
-            }
-
-            HashSet<string> excludedIds = editor.Text
-                .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            ClipPocketSettings nextSettings = _clipboardStateService.Settings with { ExcludedAppIds = excludedIds };
-            Result saveResult = await _clipboardStateService.SaveSettingsAsync(nextSettings);
-            if (saveResult.IsFailure)
-            {
-                _logger?.LogWarning(saveResult.Error?.Exception, "Failed to save excluded app ids. Code {ErrorCode}: {Message}", saveResult.Error?.Code, saveResult.Error?.Message);
             }
         }
 
@@ -1526,7 +1380,7 @@ namespace ClipPocketWin
                 colorTableEntries = 1 << bitsPerPixel;
             }
 
-            int maskBytes = (compression == 3 || compression == 6) ? 12 : 0;
+            int maskBytes = (compression is 3 or 6) ? 12 : 0;
             int colorTableBytes = colorTableEntries * 4;
             int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
             if (pixelDataOffset > int.MaxValue - dibPayload.Length)
@@ -2226,7 +2080,6 @@ namespace ClipPocketWin
             _adaptiveBackdropController?.Dispose();
             _acrylicController?.Dispose();
             _acrylicController = null;
-            _configurationSource = null;
         }
 
         private sealed class ClipboardCardViewModel : INotifyPropertyChanged
@@ -2464,7 +2317,7 @@ namespace ClipPocketWin
                     colorTableEntries = 1 << bitsPerPixel;
                 }
 
-                int maskBytes = (compression == 3 || compression == 6) ? 12 : 0;
+                int maskBytes = (compression is 3 or 6) ? 12 : 0;
                 int colorTableBytes = colorTableEntries * 4;
                 int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
                 if (pixelDataOffset > int.MaxValue - dibPayload.Length)
@@ -2818,7 +2671,7 @@ namespace ClipPocketWin
             private static (byte R, byte G, byte B) FromHsb(double hue, double saturation, double brightness)
             {
                 double c = brightness * saturation;
-                double x = c * (1 - Math.Abs(((hue / 60d) % 2) - 1));
+                double x = c * (1 - Math.Abs((hue / 60d % 2) - 1));
                 double m = brightness - c;
 
                 (double r, double g, double b) = hue switch

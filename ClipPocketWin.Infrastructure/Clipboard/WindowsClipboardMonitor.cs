@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 
 namespace ClipPocketWin.Infrastructure.Clipboard;
 

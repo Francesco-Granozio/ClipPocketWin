@@ -41,16 +41,4 @@ internal static class LaunchAtLoginRegistry
         }
     }
 
-    public static bool IsEnabled()
-    {
-        try
-        {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-            return key?.GetValue(EntryName) is string existing && !string.IsNullOrWhiteSpace(existing);
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

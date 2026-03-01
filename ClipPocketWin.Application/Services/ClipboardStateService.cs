@@ -12,7 +12,6 @@ public sealed class ClipboardStateService : IClipboardStateService
     private readonly IClipboardMonitor _clipboardMonitor;
     private readonly IClipboardHistoryRepository _historyRepository;
     private readonly IPinnedClipboardRepository _pinnedRepository;
-    private readonly ISnippetRepository _snippetRepository;
     private readonly ISettingsRepository _settingsRepository;
     private readonly IAutoPasteService _autoPasteService;
     private readonly ILogger<ClipboardStateService> _logger;
@@ -20,7 +19,6 @@ public sealed class ClipboardStateService : IClipboardStateService
 
     private List<ClipboardItem> _clipboardItems = [];
     private List<PinnedClipboardItem> _pinnedItems = [];
-    private List<Snippet> _snippets = [];
     private ClipPocketSettings _settings = new();
     private bool _runtimeStarted;
 
@@ -28,7 +26,6 @@ public sealed class ClipboardStateService : IClipboardStateService
         IClipboardMonitor clipboardMonitor,
         IClipboardHistoryRepository historyRepository,
         IPinnedClipboardRepository pinnedRepository,
-        ISnippetRepository snippetRepository,
         ISettingsRepository settingsRepository,
         IAutoPasteService autoPasteService,
         ILogger<ClipboardStateService> logger)
@@ -36,7 +33,6 @@ public sealed class ClipboardStateService : IClipboardStateService
         _clipboardMonitor = clipboardMonitor;
         _historyRepository = historyRepository;
         _pinnedRepository = pinnedRepository;
-        _snippetRepository = snippetRepository;
         _settingsRepository = settingsRepository;
         _autoPasteService = autoPasteService;
         _logger = logger;
@@ -66,17 +62,6 @@ public sealed class ClipboardStateService : IClipboardStateService
         }
     }
 
-    public IReadOnlyList<Snippet> Snippets
-    {
-        get
-        {
-            lock (_syncRoot)
-            {
-                return _snippets.ToArray();
-            }
-        }
-    }
-
     public ClipPocketSettings Settings
     {
         get
@@ -101,7 +86,7 @@ public sealed class ClipboardStateService : IClipboardStateService
             ClipPocketSettings settings = settingsResult.Value!;
 
             Result<IReadOnlyList<ClipboardItem>> historyResult = settings.RememberHistory
-                ? await _historyRepository.LoadAsync(settings.EncryptHistory, cancellationToken)
+                ? await _historyRepository.LoadAsync(cancellationToken)
                 : Result<IReadOnlyList<ClipboardItem>>.Success([]);
 
             if (historyResult.IsFailure)
@@ -115,12 +100,6 @@ public sealed class ClipboardStateService : IClipboardStateService
                 return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize pinned state.", pinnedResult.Error?.Exception));
             }
 
-            Result<IReadOnlyList<Snippet>> snippetsResult = await _snippetRepository.LoadAsync(cancellationToken);
-            if (snippetsResult.IsFailure)
-            {
-                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize snippets state.", snippetsResult.Error?.Exception));
-            }
-
             lock (_syncRoot)
             {
                 _settings = settings;
@@ -131,10 +110,9 @@ public sealed class ClipboardStateService : IClipboardStateService
                     _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
                 }
                 _pinnedItems = pinnedResult.Value!.ToList();
-                _snippets = snippetsResult.Value!.ToList();
             }
 
-            _logger.LogInformation("Initialized state with {HistoryCount} history items, {PinnedCount} pinned items, {SnippetCount} snippets", _clipboardItems.Count, _pinnedItems.Count, _snippets.Count);
+            _logger.LogInformation("Initialized state with {HistoryCount} history items and {PinnedCount} pinned items", _clipboardItems.Count, _pinnedItems.Count);
             OnStateChanged();
             return Result.Success();
         }
@@ -397,16 +375,14 @@ public sealed class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.SettingsInvalid, "Settings cannot be null."));
         }
 
-        bool encryptionChanged;
         bool captureRichTextChanged;
         bool limitEnforced = false;
-        
+
         lock (_syncRoot)
         {
-            encryptionChanged = _settings.EncryptHistory != settings.EncryptHistory;
             captureRichTextChanged = _settings.CaptureRichText != settings.CaptureRichText;
             _settings = settings;
-            
+
             int targetLimit = _settings.EffectiveHistoryLimit;
             if (_clipboardItems.Count > targetLimit)
             {
@@ -421,7 +397,7 @@ public sealed class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist settings.", saveSettingsResult.Error?.Exception));
         }
 
-        if (encryptionChanged || limitEnforced)
+        if (limitEnforced)
         {
             Result persistResult = await PersistHistoryAsync(cancellationToken);
             if (persistResult.IsFailure)
@@ -465,7 +441,7 @@ public sealed class ClipboardStateService : IClipboardStateService
             return Result.Success();
         }
 
-        Result saveResult = await _historyRepository.SaveAsync(snapshot, settings.EncryptHistory, cancellationToken);
+        Result saveResult = await _historyRepository.SaveAsync(snapshot, cancellationToken);
         if (saveResult.IsFailure)
         {
             return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist clipboard history.", saveResult.Error?.Exception));

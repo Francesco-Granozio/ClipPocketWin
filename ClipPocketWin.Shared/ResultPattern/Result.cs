@@ -1,5 +1,3 @@
-using ClipPocketWin.Shared.ResultPattern;
-
 namespace ClipPocketWin.Shared.ResultPattern;
 
 /// <summary>

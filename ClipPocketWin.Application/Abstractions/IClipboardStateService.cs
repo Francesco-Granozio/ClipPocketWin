@@ -11,8 +11,6 @@ public interface IClipboardStateService
 
     IReadOnlyList<PinnedClipboardItem> PinnedItems { get; }
 
-    IReadOnlyList<Snippet> Snippets { get; }
-
     ClipPocketSettings Settings { get; }
 
     Task<Result> InitializeAsync(CancellationToken cancellationToken = default);

@@ -24,6 +24,30 @@
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver" />
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="RootBorder"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.9"
+                                                    Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation
+                                                    Storyboard.TargetName="RootBorder"
+                                                    Storyboard.TargetProperty="Opacity"
+                                                    To="0.45"
+                                                    Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
                                 <ContentPresenter
                                     Margin="{TemplateBinding Padding}"
                                     HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -31,30 +55,6 @@
                                     Content="{TemplateBinding Content}"
                                     ContentTemplate="{TemplateBinding ContentTemplate}" />
                             </Border>
-                            <VisualStateManager.VisualStateGroups>
-                                <VisualStateGroup x:Name="CommonStates">
-                                    <VisualState x:Name="Normal" />
-                                    <VisualState x:Name="PointerOver" />
-                                    <VisualState x:Name="Pressed">
-                                        <Storyboard>
-                                            <DoubleAnimation
-                                                Storyboard.TargetName="RootBorder"
-                                                Storyboard.TargetProperty="Opacity"
-                                                To="0.9"
-                                                Duration="0" />
-                                        </Storyboard>
-                                    </VisualState>
-                                    <VisualState x:Name="Disabled">
-                                        <Storyboard>
-                                            <DoubleAnimation
-                                                Storyboard.TargetName="RootBorder"
-                                                Storyboard.TargetProperty="Opacity"
-                                                To="0.45"
-                                                Duration="0" />
-                                        </Storyboard>
-                                    </VisualState>
-                                </VisualStateGroup>
-                            </VisualStateManager.VisualStateGroups>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
@@ -185,16 +185,7 @@
                             Foreground="#88FFFFFF"
                             Glyph="&#xE713;" />
                     </Button>
-                    <Button
-                        Click="ClosePanelButton_Click"
-                        Style="{StaticResource GlassIconChipButtonStyle}"
-                        ToolTipService.ToolTip="Close">
-                        <FontIcon
-                            FontFamily="Segoe Fluent Icons"
-                            FontSize="14"
-                            Foreground="#88FFFFFF"
-                            Glyph="&#xE711;" />
-                    </Button>
+
                 </StackPanel>
             </Grid>
 

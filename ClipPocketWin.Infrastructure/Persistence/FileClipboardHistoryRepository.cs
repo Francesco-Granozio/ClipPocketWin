@@ -10,49 +10,26 @@ namespace ClipPocketWin.Infrastructure.Persistence;
 
 public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
 {
-    private readonly IClipboardEncryptionService _encryptionService;
     private readonly ILogger<FileClipboardHistoryRepository> _logger;
 
-    public FileClipboardHistoryRepository(
-        IClipboardEncryptionService encryptionService,
-        ILogger<FileClipboardHistoryRepository> logger)
+    public FileClipboardHistoryRepository(ILogger<FileClipboardHistoryRepository> logger)
     {
-        _encryptionService = encryptionService;
         _logger = logger;
     }
 
-    public async Task<Result<IReadOnlyList<ClipboardItem>>> LoadAsync(bool encrypted, CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<ClipboardItem>>> LoadAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            string expectedPath = encrypted ? StoragePaths.ClipboardHistoryEncrypted : StoragePaths.ClipboardHistoryJson;
-            if (!File.Exists(expectedPath))
-            {
-                string fallbackPath = encrypted ? StoragePaths.ClipboardHistoryJson : StoragePaths.ClipboardHistoryEncrypted;
-                if (!File.Exists(fallbackPath))
-                {
-                    return Result<IReadOnlyList<ClipboardItem>>.Success([]);
-                }
-
-                expectedPath = fallbackPath;
-            }
-
-            byte[] data = await File.ReadAllBytesAsync(expectedPath, cancellationToken);
-            if (data.Length == 0)
+            if (!File.Exists(StoragePaths.ClipboardHistoryJson))
             {
                 return Result<IReadOnlyList<ClipboardItem>>.Success([]);
             }
 
-            bool shouldDecrypt = encrypted || expectedPath.EndsWith(".encrypted", StringComparison.OrdinalIgnoreCase);
-            if (shouldDecrypt)
+            byte[] data = await File.ReadAllBytesAsync(StoragePaths.ClipboardHistoryJson, cancellationToken);
+            if (data.Length == 0)
             {
-                Result<byte[]> decryptResult = await _encryptionService.DecryptAsync(data, cancellationToken);
-                if (decryptResult.IsFailure)
-                {
-                    return Result<IReadOnlyList<ClipboardItem>>.Failure(decryptResult.Error!);
-                }
-
-                data = decryptResult.Value!;
+                return Result<IReadOnlyList<ClipboardItem>>.Success([]);
             }
 
             List<ClipboardItem> items = JsonSerializer.Deserialize<List<ClipboardItem>>(data, JsonSerialization.Options) ?? [];
@@ -75,7 +52,7 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
         }
     }
 
-    public async Task<Result> SaveAsync(IReadOnlyList<ClipboardItem> items, bool encrypted, CancellationToken cancellationToken = default)
+    public async Task<Result> SaveAsync(IReadOnlyList<ClipboardItem> items, CancellationToken cancellationToken = default)
     {
         if (items is null)
         {
@@ -84,8 +61,7 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
 
         try
         {
-            string destinationPath = encrypted ? StoragePaths.ClipboardHistoryEncrypted : StoragePaths.ClipboardHistoryJson;
-            string secondaryPath = encrypted ? StoragePaths.ClipboardHistoryJson : StoragePaths.ClipboardHistoryEncrypted;
+            string destinationPath = StoragePaths.ClipboardHistoryJson;
 
             ClipboardItem[] filteredItems = items
                 .Where(item => item.Type != ClipboardItemType.Image || item.BinaryContent?.Length <= DomainLimits.MaxPersistedImageBytes)
@@ -93,22 +69,8 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
                 .ToArray();
 
             byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(filteredItems, JsonSerialization.Options);
-            if (encrypted)
-            {
-                Result<byte[]> encryptResult = await _encryptionService.EncryptAsync(serialized, cancellationToken);
-                if (encryptResult.IsFailure)
-                {
-                    return Result.Failure(encryptResult.Error!);
-                }
-
-                serialized = encryptResult.Value!;
-            }
 
             await File.WriteAllBytesAsync(destinationPath, serialized, cancellationToken);
-            if (File.Exists(secondaryPath))
-            {
-                File.Delete(secondaryPath);
-            }
 
             _logger.LogInformation("Saved {Count} clipboard items to {Path}", filteredItems.Length, destinationPath);
             return Result.Success();
@@ -131,11 +93,6 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
             if (File.Exists(StoragePaths.ClipboardHistoryJson))
             {
                 File.Delete(StoragePaths.ClipboardHistoryJson);
-            }
-
-            if (File.Exists(StoragePaths.ClipboardHistoryEncrypted))
-            {
-                File.Delete(StoragePaths.ClipboardHistoryEncrypted);
             }
 
             return Task.FromResult(Result.Success());

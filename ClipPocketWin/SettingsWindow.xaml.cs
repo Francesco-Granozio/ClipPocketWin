@@ -101,7 +101,7 @@ public sealed partial class SettingsWindow : Window
             MaxHistoryNumberBox.Value = Math.Clamp(_settings.MaxHistoryItems, 10, 500);
             MaxHistoryNumberBox.IsEnabled = _settings.EnableHistoryLimit;
             RecordShortcutButton.Content = _settings.KeyboardShortcut.DisplayString;
-            int clampedHistory = (int)Math.Clamp(_settings.MaxHistoryItems, 10, 500);
+            int clampedHistory = Math.Clamp(_settings.MaxHistoryItems, 10, 500);
             HistoryLimitDescription.Text = $"Keep up to {clampedHistory} items in history.";
 
             PackageVersion version = Package.Current.Id.Version;
@@ -315,7 +315,7 @@ public sealed partial class SettingsWindow : Window
         HashSet<string> excluded = _settings.ExcludedAppIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Gather process info with window status and executable path
-        var processInfos = new List<(string Name, bool HasWindow, string? ExePath, string? WindowTitle)>();
+        List<(string Name, bool HasWindow, string? ExePath, string? WindowTitle)> processInfos = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (Process proc in Process.GetProcesses())
@@ -360,10 +360,10 @@ public sealed partial class SettingsWindow : Window
         List<(CheckBox CheckBox, string Name)> checkBoxes = [];
         bool addedSeparator = false;
 
-        foreach (var info in processInfos)
+        foreach ((string? Name, bool HasWindow, string? ExePath, string? WindowTitle) in processInfos)
         {
             // Add separator between windowed apps and background processes
-            if (!info.HasWindow && !addedSeparator)
+            if (!HasWindow && !addedSeparator)
             {
                 addedSeparator = true;
                 appListPanel.Children.Add(new Border
@@ -377,7 +377,7 @@ public sealed partial class SettingsWindow : Window
 
             // Try to extract icon
             BitmapImage? iconImage = null;
-            if (!string.IsNullOrWhiteSpace(info.ExePath))
+            if (!string.IsNullOrWhiteSpace(ExePath))
             {
                 try
                 {
@@ -387,12 +387,12 @@ public sealed partial class SettingsWindow : Window
                     Directory.CreateDirectory(iconCacheDir);
                     string safeFileName = Convert.ToHexString(
                         System.Security.Cryptography.SHA256.HashData(
-                            System.Text.Encoding.UTF8.GetBytes(info.ExePath)))[..16] + ".png";
+                            System.Text.Encoding.UTF8.GetBytes(ExePath)))[..16] + ".png";
                     string iconPngPath = Path.Combine(iconCacheDir, safeFileName);
 
                     if (!File.Exists(iconPngPath))
                     {
-                        using System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(info.ExePath);
+                        using System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(ExePath);
                         if (icon is not null)
                         {
                             using System.Drawing.Bitmap bmp = icon.ToBitmap();
@@ -442,20 +442,20 @@ public sealed partial class SettingsWindow : Window
                 row.Children.Add(fallbackIcon);
             }
 
-            string displayLabel = info.WindowTitle is not null
-                ? $"{info.Name}  —  {info.WindowTitle}"
-                : info.Name;
+            string displayLabel = WindowTitle is not null
+                ? $"{Name}  —  {WindowTitle}"
+                : Name;
 
             CheckBox checkBox = new()
             {
                 Content = displayLabel,
-                IsChecked = excluded.Contains(info.Name),
+                IsChecked = excluded.Contains(Name),
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(checkBox, 1);
             row.Children.Add(checkBox);
 
-            checkBoxes.Add((checkBox, info.Name));
+            checkBoxes.Add((checkBox, Name));
             appListPanel.Children.Add(row);
         }
 
