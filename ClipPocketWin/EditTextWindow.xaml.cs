@@ -65,7 +65,14 @@ public sealed partial class EditTextWindow : Window
             presenter.IsMinimizable = false;
             presenter.IsMaximizable = false;
             presenter.IsResizable = false;
+            presenter.SetBorderAndTitleBar(true, true);
         }
+
+        appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+        appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+        appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        appWindow.TitleBar.ButtonForegroundColor = Colors.White;
+        appWindow.TitleBar.ButtonInactiveForegroundColor = Colors.Transparent;
 
         const int width = 760;
         const int height = 520;
