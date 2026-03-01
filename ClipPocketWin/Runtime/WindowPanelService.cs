@@ -137,7 +137,9 @@ public sealed class WindowPanelService : IWindowPanelService
 
                 if (!positioned)
                 {
+#if DEBUG
                     _logger.LogDebug("Panel positioning before show failed. PlacementMode={PlacementMode}", showPlacementMode);
+#endif
                 }
             }
 
@@ -147,7 +149,9 @@ public sealed class WindowPanelService : IWindowPanelService
                 _ = SetForegroundWindow(_windowHandle);
             }
 
+#if DEBUG
             _logger.LogDebug("Panel visibility changed to {Visible}. NativeResult={NativeResult}", visible, commandResult);
+#endif
             return Result.Success();
         }
     }

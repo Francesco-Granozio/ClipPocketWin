@@ -60,7 +60,9 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Quick action Save to file failed.");
+#endif
             return Result.Failure(new Error(ErrorCode.StorageWriteFailed, "Failed to save clipboard item to file.", exception));
         }
     }

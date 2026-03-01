@@ -128,7 +128,11 @@ namespace ClipPocketWin
             _clipboardStateService = app.Services.GetRequiredService<IClipboardStateService>();
             _quickActionsService = app.Services.GetRequiredService<IQuickActionsService>();
             _windowPanelService = app.Services.GetRequiredService<IWindowPanelService>();
+#if DEBUG
             _logger = app.Services.GetService<ILogger<MainWindow>>();
+#else
+            _logger = null;
+#endif
             _clipboardStateService.StateChanged += ClipboardStateService_StateChanged;
             ClipboardItemsListView.ItemsSource = _clipboardCards;
             RefreshClipboardCards();
@@ -279,7 +283,9 @@ namespace ClipPocketWin
                 return;
             }
 
+#if DEBUG
             _logger?.LogInformation("Double-click selection started for item {ItemId}.", itemId);
+#endif
             await PasteAndHideAsync(itemId);
         }
 
@@ -320,11 +326,15 @@ namespace ClipPocketWin
             ClipboardItem? item = ResolveClipboardItem(itemId);
             if (item is null)
             {
+#if DEBUG
                 _logger?.LogWarning("Drag started but item {ItemId} not found in state.", itemId);
+#endif
                 return;
             }
 
+#if DEBUG
             _logger?.LogInformation("Drag started for item {ItemId}, Type={Type}, FilePath={FilePath}", itemId, item.Type, item.FilePath);
+#endif
 
             args.Data.RequestedOperation = DataPackageOperation.Copy;
             string? textPayload = ResolveTextPayload(item);
@@ -335,13 +345,17 @@ namespace ClipPocketWin
                     {
                         if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
                         {
+#if DEBUG
                             _logger?.LogInformation("Drag file resolved: {FilePath}, exists=true", item.FilePath);
+#endif
                             StorageFile storageFile = await StorageFile.GetFileFromPathAsync(item.FilePath);
                             args.Data.SetStorageItems([storageFile]);
                             return;
                         }
 
+#if DEBUG
                         _logger?.LogWarning("Drag file path missing or not found: {FilePath}", item.FilePath);
+#endif
                         break;
                     }
                 case ClipboardItemType.Image:
@@ -667,10 +681,14 @@ namespace ClipPocketWin
             if (_settingsWindow is null)
             {
                 App app = (App)Microsoft.UI.Xaml.Application.Current;
+                ILogger<SettingsWindow>? settingsLogger = null;
+#if DEBUG
+                settingsLogger = app.Services.GetService<ILogger<SettingsWindow>>();
+#endif
                 _settingsWindow = new SettingsWindow(
                     _clipboardStateService,
                     app.Services.GetRequiredService<IGlobalHotkeyService>(),
-                    app.Services.GetService<ILogger<SettingsWindow>>());
+                    settingsLogger);
                 _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             }
 
@@ -771,45 +789,57 @@ namespace ClipPocketWin
             Result copyResult = await _clipboardStateService.CopyClipboardItemAsync(itemId);
             if (copyResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(
                     copyResult.Error?.Exception,
                     "Clipboard copy failed for item {ItemId}. Code {ErrorCode}: {Message}",
                     itemId,
                     copyResult.Error?.Code,
                     copyResult.Error?.Message);
+#endif
             }
         }
 
         private async Task PasteAndHideAsync(Guid itemId)
         {
             Result hideResult = await _windowPanelService.HideAsync();
+#if DEBUG
             _logger?.LogInformation("Double-click hide requested for item {ItemId}. Success={Success}", itemId, hideResult.IsSuccess);
+#endif
             if (hideResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(
                     hideResult.Error?.Exception,
                     "Failed to hide panel before clipboard paste. Item {ItemId}. Code {ErrorCode}: {Message}",
                     itemId,
                     hideResult.Error?.Code,
                     hideResult.Error?.Message);
+#endif
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(60));
 
+#if DEBUG
             _logger?.LogInformation("Double-click paste requested for item {ItemId}.", itemId);
+#endif
             Result pasteResult = await _clipboardStateService.PasteClipboardItemAsync(itemId);
             if (pasteResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(
                     pasteResult.Error?.Exception,
                     "Clipboard paste failed for item {ItemId}. Code {ErrorCode}: {Message}",
                     itemId,
                     pasteResult.Error?.Code,
                     pasteResult.Error?.Message);
+#endif
                 return;
             }
 
+#if DEBUG
             _logger?.LogInformation("Double-click paste completed for item {ItemId}.", itemId);
+#endif
         }
 
         private async Task SaveToFileAsync(ClipboardItem item)
@@ -818,7 +848,9 @@ namespace ClipPocketWin
             Result result = await _quickActionsService.SaveToFileAsync(item, windowHandle);
             if (result.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(result.Error?.Exception, "Quick action Save to file failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             }
         }
 
@@ -827,7 +859,9 @@ namespace ClipPocketWin
             string? initialText = ResolveEditableTextPayload(item);
             if (initialText is null)
             {
+#if DEBUG
                 _logger?.LogWarning("Quick action Edit is not available for clipboard item type {ItemType}.", item.Type);
+#endif
                 return;
             }
 
@@ -841,7 +875,9 @@ namespace ClipPocketWin
             Result result = await _quickActionsService.EditTextAsync(sourceItem, editedText);
             if (result.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(result.Error?.Exception, "Quick action Edit failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             }
         }
 
@@ -850,7 +886,9 @@ namespace ClipPocketWin
             Result result = await _quickActionsService.CopyAsBase64Async(item);
             if (result.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(result.Error?.Exception, "Quick action Copy as Base64 failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             }
         }
 
@@ -859,7 +897,9 @@ namespace ClipPocketWin
             Result result = await _quickActionsService.UrlEncodeAsync(item);
             if (result.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(result.Error?.Exception, "Quick action URL Encode failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             }
         }
 
@@ -868,7 +908,9 @@ namespace ClipPocketWin
             Result result = await _quickActionsService.UrlDecodeAsync(item);
             if (result.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(result.Error?.Exception, "Quick action URL Decode failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             }
         }
 
@@ -877,7 +919,9 @@ namespace ClipPocketWin
             Result toggleResult = await _clipboardStateService.TogglePinAsync(item);
             if (toggleResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(toggleResult.Error?.Exception, "Failed to toggle pin. Code {ErrorCode}: {Message}", toggleResult.Error?.Code, toggleResult.Error?.Message);
+#endif
             }
         }
 
@@ -886,7 +930,9 @@ namespace ClipPocketWin
             Result deleteResult = await _clipboardStateService.DeleteClipboardItemAsync(itemId);
             if (deleteResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(deleteResult.Error?.Exception, "Failed to delete clipboard item. Code {ErrorCode}: {Message}", deleteResult.Error?.Code, deleteResult.Error?.Message);
+#endif
             }
         }
 
@@ -911,7 +957,9 @@ namespace ClipPocketWin
             Result clearResult = await _clipboardStateService.ClearClipboardHistoryAsync();
             if (clearResult.IsFailure)
             {
+#if DEBUG
                 _logger?.LogWarning(clearResult.Error?.Exception, "Failed to clear clipboard history. Code {ErrorCode}: {Message}", clearResult.Error?.Code, clearResult.Error?.Message);
+#endif
             }
         }
 
@@ -1332,12 +1380,16 @@ namespace ClipPocketWin
                     "ClipPocketWin",
                     "drag-images");
 
-                Directory.CreateDirectory(dragCacheDirectory);
+                CacheDirectoryPolicy.EnsureDirectoryAndApplyPolicy(
+                    dragCacheDirectory,
+                    maxFileCount: 160,
+                    maxTotalBytes: 256L * 1024 * 1024);
 
                 string hash = Convert.ToHexString(SHA256.HashData(dibPayload));
                 string bmpPath = Path.Combine(dragCacheDirectory, hash + ".bmp");
                 if (File.Exists(bmpPath))
                 {
+                    CacheDirectoryPolicy.TouchFile(bmpPath);
                     return bmpPath;
                 }
 
@@ -1353,6 +1405,92 @@ namespace ClipPocketWin
             catch
             {
                 return null;
+            }
+        }
+
+        private static class CacheDirectoryPolicy
+        {
+            private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(12);
+            private static readonly Dictionary<string, DateTimeOffset> LastCleanupUtcByDirectory = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly object SyncRoot = new();
+
+            public static void EnsureDirectoryAndApplyPolicy(string directoryPath, int maxFileCount, long maxTotalBytes)
+            {
+                Directory.CreateDirectory(directoryPath);
+                if (!TryBeginCleanup(directoryPath))
+                {
+                    return;
+                }
+
+                try
+                {
+                    CleanupDirectory(directoryPath, maxFileCount, maxTotalBytes);
+                }
+                catch
+                {
+                }
+            }
+
+            public static void TouchFile(string filePath)
+            {
+                try
+                {
+                    File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
+                }
+                catch
+                {
+                }
+            }
+
+            private static bool TryBeginCleanup(string directoryPath)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                lock (SyncRoot)
+                {
+                    if (LastCleanupUtcByDirectory.TryGetValue(directoryPath, out DateTimeOffset lastRun)
+                        && (now - lastRun) < CleanupInterval)
+                    {
+                        return false;
+                    }
+
+                    LastCleanupUtcByDirectory[directoryPath] = now;
+                    return true;
+                }
+            }
+
+            private static void CleanupDirectory(string directoryPath, int maxFileCount, long maxTotalBytes)
+            {
+                DirectoryInfo directory = new(directoryPath);
+                FileInfo[] files = directory.GetFiles();
+                if (files.Length == 0)
+                {
+                    return;
+                }
+
+                Array.Sort(files, static (left, right) => right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
+
+                int keptFiles = 0;
+                long keptBytes = 0;
+                foreach (FileInfo file in files)
+                {
+                    long fileLength = Math.Max(0L, file.Length);
+                    bool keepWithinCount = keptFiles < maxFileCount;
+                    bool keepWithinSize = (keptBytes + fileLength) <= maxTotalBytes || keptFiles == 0;
+                    if (keepWithinCount && keepWithinSize)
+                    {
+                        keptFiles++;
+                        keptBytes += fileLength;
+                        continue;
+                    }
+
+                    try
+                    {
+                        file.Delete();
+                    }
+                    catch
+                    {
+                    }
+                }
             }
         }
 
@@ -1606,6 +1744,7 @@ namespace ClipPocketWin
 
         private void LogBackdropSamplingDiagnostics(BackdropSamplingDiagnostics diagnostics, double measuredLuminance, double smoothedLuminance)
         {
+#if DEBUG
             if (_logger == null)
             {
                 return;
@@ -1639,6 +1778,7 @@ namespace ClipPocketWin
                     diagnostics.CandidateWindowCount);
                 _lastBackdropFallbackWarningUtc = now;
             }
+#endif
         }
 
         private void ApplyBackdropReadability(double luminance)
@@ -2241,7 +2381,14 @@ namespace ClipPocketWin
 
         private static class ImagePreviewCache
         {
+            private const int MaxInMemoryEntries = 160;
+            private const int MaxDiskFileCount = 320;
+            private const long MaxDiskBytes = 384L * 1024 * 1024;
+
             private static readonly Dictionary<string, BitmapImage?> Cache = new(StringComparer.Ordinal);
+            private static readonly Dictionary<string, LinkedListNode<string>> CacheNodes = new(StringComparer.Ordinal);
+            private static readonly LinkedList<string> CacheLru = [];
+            private static readonly object SyncRoot = new();
             private static readonly string PreviewCacheDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ClipPocketWin",
@@ -2256,24 +2403,48 @@ namespace ClipPocketWin
                 }
 
                 string hash = ComputeStableHash(binaryContent);
-                if (Cache.TryGetValue(hash, out BitmapImage? cached))
                 {
-                    return cached;
+                    lock (SyncRoot)
+                    {
+                        if (Cache.TryGetValue(hash, out BitmapImage? cached))
+                        {
+                            Touch(hash);
+                            return cached;
+                        }
+                    }
                 }
 
                 BitmapImage? image = BuildPreviewImage(hash, binaryContent);
-                Cache[hash] = image;
-                return image;
+                lock (SyncRoot)
+                {
+                    if (Cache.TryGetValue(hash, out BitmapImage? cached))
+                    {
+                        Touch(hash);
+                        return cached;
+                    }
+
+                    Cache[hash] = image;
+                    Touch(hash);
+                    TrimInMemoryCache();
+                    return image;
+                }
             }
 
             private static BitmapImage? BuildPreviewImage(string hash, byte[] dibPayload)
             {
                 try
                 {
-                    Directory.CreateDirectory(PreviewCacheDirectory);
+                    CacheDirectoryPolicy.EnsureDirectoryAndApplyPolicy(
+                        PreviewCacheDirectory,
+                        MaxDiskFileCount,
+                        MaxDiskBytes);
 
                     string bmpPath = Path.Combine(PreviewCacheDirectory, hash + ".bmp");
-                    if (!File.Exists(bmpPath))
+                    if (File.Exists(bmpPath))
+                    {
+                        CacheDirectoryPolicy.TouchFile(bmpPath);
+                    }
+                    else
                     {
                         if (TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
                         {
@@ -2343,6 +2514,32 @@ namespace ClipPocketWin
                 byte[] bytes = SHA256.HashData(payload);
                 return Convert.ToHexString(bytes);
             }
+
+            private static void Touch(string key)
+            {
+                if (CacheNodes.TryGetValue(key, out LinkedListNode<string>? node))
+                {
+                    CacheLru.Remove(node);
+                }
+                else
+                {
+                    node = new LinkedListNode<string>(key);
+                    CacheNodes[key] = node;
+                }
+
+                CacheLru.AddLast(node);
+            }
+
+            private static void TrimInMemoryCache()
+            {
+                while (Cache.Count > MaxInMemoryEntries && CacheLru.First is LinkedListNode<string> oldest)
+                {
+                    string oldestKey = oldest.Value;
+                    CacheLru.RemoveFirst();
+                    CacheNodes.Remove(oldestKey);
+                    Cache.Remove(oldestKey);
+                }
+            }
         }
 
         private sealed record FileCardInfo(string Name, string Path, string Size);
@@ -2356,7 +2553,14 @@ namespace ClipPocketWin
 
         private static class FileTypeIconCache
         {
+            private const int MaxInMemoryEntries = 220;
+            private const int MaxDiskFileCount = 480;
+            private const long MaxDiskBytes = 256L * 1024 * 1024;
+
             private static readonly Dictionary<string, BitmapImage?> Cache = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly Dictionary<string, LinkedListNode<string>> CacheNodes = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly LinkedList<string> CacheLru = [];
+            private static readonly object SyncRoot = new();
             private static readonly string IconsCacheDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ClipPocketWin",
@@ -2376,27 +2580,51 @@ namespace ClipPocketWin
                 string cacheKey = isPerFileIcon
                     ? filePath
                     : (string.IsNullOrWhiteSpace(extension) ? "_noext" : extension);
-                if (Cache.TryGetValue(cacheKey, out BitmapImage? cached))
                 {
-                    return cached;
+                    lock (SyncRoot)
+                    {
+                        if (Cache.TryGetValue(cacheKey, out BitmapImage? cached))
+                        {
+                            Touch(cacheKey);
+                            return cached;
+                        }
+                    }
                 }
 
                 BitmapImage? icon = BuildIcon(filePath, extension, cacheKey, isPerFileIcon);
-                Cache[cacheKey] = icon;
-                return icon;
+                lock (SyncRoot)
+                {
+                    if (Cache.TryGetValue(cacheKey, out BitmapImage? cached))
+                    {
+                        Touch(cacheKey);
+                        return cached;
+                    }
+
+                    Cache[cacheKey] = icon;
+                    Touch(cacheKey);
+                    TrimInMemoryCache();
+                    return icon;
+                }
             }
 
             private static BitmapImage? BuildIcon(string filePath, string extension, string cacheKey, bool isPerFileIcon)
             {
                 try
                 {
-                    Directory.CreateDirectory(IconsCacheDirectory);
+                    CacheDirectoryPolicy.EnsureDirectoryAndApplyPolicy(
+                        IconsCacheDirectory,
+                        MaxDiskFileCount,
+                        MaxDiskBytes);
                     string safeKey = isPerFileIcon
                         ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
                             System.Text.Encoding.UTF8.GetBytes(cacheKey)))[..16]
                         : cacheKey.Replace('.', '_');
                     string iconPngPath = Path.Combine(IconsCacheDirectory, safeKey + ".png");
-                    if (!File.Exists(iconPngPath))
+                    if (File.Exists(iconPngPath))
+                    {
+                        CacheDirectoryPolicy.TouchFile(iconPngPath);
+                    }
+                    else
                     {
                         using System.Drawing.Icon? icon = ResolveShellIcon(filePath, extension);
                         if (icon is null)
@@ -2413,6 +2641,32 @@ namespace ClipPocketWin
                 catch
                 {
                     return null;
+                }
+            }
+
+            private static void Touch(string key)
+            {
+                if (CacheNodes.TryGetValue(key, out LinkedListNode<string>? node))
+                {
+                    CacheLru.Remove(node);
+                }
+                else
+                {
+                    node = new LinkedListNode<string>(key);
+                    CacheNodes[key] = node;
+                }
+
+                CacheLru.AddLast(node);
+            }
+
+            private static void TrimInMemoryCache()
+            {
+                while (Cache.Count > MaxInMemoryEntries && CacheLru.First is LinkedListNode<string> oldest)
+                {
+                    string oldestKey = oldest.Value;
+                    CacheLru.RemoveFirst();
+                    CacheNodes.Remove(oldestKey);
+                    Cache.Remove(oldestKey);
                 }
             }
 
@@ -2552,7 +2806,14 @@ namespace ClipPocketWin
 
         private static class SourceAppIconCache
         {
+            private const int MaxInMemoryEntries = 180;
+            private const int MaxDiskFileCount = 360;
+            private const long MaxDiskBytes = 192L * 1024 * 1024;
+
             private static readonly Dictionary<string, SourceAppVisual> Cache = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly Dictionary<string, LinkedListNode<string>> CacheNodes = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly LinkedList<string> CacheLru = [];
+            private static readonly object SyncRoot = new();
             private static readonly string IconsCacheDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ClipPocketWin",
@@ -2567,24 +2828,48 @@ namespace ClipPocketWin
                     return new SourceAppVisual(null, null, false);
                 }
 
-                if (Cache.TryGetValue(resolvedExecutablePath, out SourceAppVisual? cached))
                 {
-                    return cached;
+                    lock (SyncRoot)
+                    {
+                        if (Cache.TryGetValue(resolvedExecutablePath, out SourceAppVisual? cached))
+                        {
+                            Touch(resolvedExecutablePath);
+                            return cached;
+                        }
+                    }
                 }
 
                 SourceAppVisual resolved = BuildVisual(resolvedExecutablePath);
-                Cache[resolvedExecutablePath] = resolved;
-                return resolved;
+                lock (SyncRoot)
+                {
+                    if (Cache.TryGetValue(resolvedExecutablePath, out SourceAppVisual? cached))
+                    {
+                        Touch(resolvedExecutablePath);
+                        return cached;
+                    }
+
+                    Cache[resolvedExecutablePath] = resolved;
+                    Touch(resolvedExecutablePath);
+                    TrimInMemoryCache();
+                    return resolved;
+                }
             }
 
             private static SourceAppVisual BuildVisual(string executablePath)
             {
                 try
                 {
-                    Directory.CreateDirectory(IconsCacheDirectory);
+                    CacheDirectoryPolicy.EnsureDirectoryAndApplyPolicy(
+                        IconsCacheDirectory,
+                        MaxDiskFileCount,
+                        MaxDiskBytes);
 
                     string iconPngPath = Path.Combine(IconsCacheDirectory, ComputeStableHash(executablePath) + ".png");
-                    if (!File.Exists(iconPngPath))
+                    if (File.Exists(iconPngPath))
+                    {
+                        CacheDirectoryPolicy.TouchFile(iconPngPath);
+                    }
+                    else
                     {
                         using System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(executablePath);
                         if (icon is null)
@@ -2694,6 +2979,32 @@ namespace ClipPocketWin
             {
                 byte[] bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
                 return Convert.ToHexString(bytes);
+            }
+
+            private static void Touch(string key)
+            {
+                if (CacheNodes.TryGetValue(key, out LinkedListNode<string>? node))
+                {
+                    CacheLru.Remove(node);
+                }
+                else
+                {
+                    node = new LinkedListNode<string>(key);
+                    CacheNodes[key] = node;
+                }
+
+                CacheLru.AddLast(node);
+            }
+
+            private static void TrimInMemoryCache()
+            {
+                while (Cache.Count > MaxInMemoryEntries && CacheLru.First is LinkedListNode<string> oldest)
+                {
+                    string oldestKey = oldest.Value;
+                    CacheLru.RemoveFirst();
+                    CacheNodes.Remove(oldestKey);
+                    Cache.Remove(oldestKey);
+                }
             }
         }
 

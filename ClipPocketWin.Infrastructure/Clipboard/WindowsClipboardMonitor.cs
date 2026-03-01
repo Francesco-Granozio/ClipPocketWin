@@ -62,7 +62,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 _monitorTask = Task.Run(() => MonitorLoopAsync(_monitorCts.Token), CancellationToken.None);
             }
 
+#if DEBUG
             _logger.LogInformation("Windows clipboard monitor started with polling interval {IntervalMs}ms.", _pollingInterval.TotalMilliseconds);
+#endif
             return Task.FromResult(Result.Success());
         }
         catch (Exception exception)
@@ -99,7 +101,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 await monitorTask.WaitAsync(cancellationToken);
             }
 
+#if DEBUG
             _logger.LogInformation("Windows clipboard monitor stopped.");
+#endif
             return Result.Success();
         }
         catch (OperationCanceledException) when (monitorCts?.IsCancellationRequested == true)
@@ -128,7 +132,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Failed to stop clipboard monitor during dispose.");
+#endif
         }
     }
 
@@ -156,7 +162,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 Result<IReadOnlyList<ClipboardItem>> captureResult = TryReadClipboardItems(captureRichTextEnabled);
                 if (captureResult.IsFailure)
                 {
+#if DEBUG
                     _logger.LogWarning(captureResult.Error?.Exception, "Clipboard capture failed with code {ErrorCode}: {Message}", captureResult.Error?.Code, captureResult.Error?.Message);
+#endif
                     continue;
                 }
 
@@ -183,7 +191,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     Result callbackResult = await callback(clipboardItem);
                     if (callbackResult.IsFailure)
                     {
+#if DEBUG
                         _logger.LogWarning(callbackResult.Error?.Exception, "Clipboard item processing failed with code {ErrorCode}: {Message}", callbackResult.Error?.Code, callbackResult.Error?.Message);
+#endif
                     }
                 }
             }
@@ -193,7 +203,9 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogError(exception, "Clipboard monitor loop terminated unexpectedly.");
+#endif
         }
     }
 

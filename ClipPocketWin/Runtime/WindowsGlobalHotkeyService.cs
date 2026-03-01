@@ -99,7 +99,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
             _started = true;
         }
 
+#if DEBUG
         _logger.LogInformation("Global hotkey service started for {DisplayShortcut}", shortcut.DisplayString);
+#endif
         return Result.Success();
     }
 
@@ -119,7 +121,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
 
         if (!isStarted)
         {
+#if DEBUG
             _logger.LogInformation("Global hotkey updated to {DisplayShortcut}", shortcut.DisplayString);
+#endif
             return Result.Success();
         }
 
@@ -135,7 +139,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
             return startResult;
         }
 
+#if DEBUG
         _logger.LogInformation("Global hotkey updated to {DisplayShortcut}", shortcut.DisplayString);
+#endif
         return Result.Success();
     }
 
@@ -173,7 +179,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
                 }
             }
 
+#if DEBUG
             _logger.LogInformation("Global hotkey service stopped.");
+#endif
             return Task.FromResult(Result.Success());
         }
         catch (Exception exception)
@@ -190,7 +198,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Failed to dispose global hotkey service.");
+#endif
         }
     }
 
@@ -234,20 +244,26 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
                     continue;
                 }
 
+#if DEBUG
                 _logger.LogInformation("WM_HOTKEY received (id={HotkeyId}) for {DisplayShortcut}", hotkeyId, shortcut.DisplayString);
+#endif
                 try
                 {
                     HotkeyPressed?.Invoke(this, EventArgs.Empty);
                 }
                 catch (Exception exception)
                 {
+#if DEBUG
                     _logger.LogWarning(exception, "Hotkey callback execution failed.");
+#endif
                 }
             }
 
             if (getMessageResult == -1)
             {
+#if DEBUG
                 _logger.LogError("Global hotkey message loop failed with Win32 error {ErrorCode}.", Marshal.GetLastWin32Error());
+#endif
             }
         }
         catch (Exception exception)
@@ -256,7 +272,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
                 ErrorCode.HotkeyRegistrationFailed,
                 "Global hotkey message loop terminated unexpectedly.",
                 exception)));
+#if DEBUG
             _logger.LogError(exception, "Global hotkey message loop crashed.");
+#endif
         }
         finally
         {
@@ -284,16 +302,19 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
             if (isRegistered)
             {
                 ids.Add(id);
+#if DEBUG
                 _logger.LogInformation(
                     "Global hotkey registered: {DisplayShortcut} (id={Id}, modifiers=0x{Modifiers:X4}, vk=0x{VirtualKey:X2})",
                     shortcut.DisplayString,
                     id,
                     modifiers,
                     virtualKey);
+#endif
                 continue;
             }
 
             int errorCode = Marshal.GetLastWin32Error();
+#if DEBUG
             _logger.LogWarning(
                 "Global hotkey register failed for {DisplayShortcut} (id={Id}, modifiers=0x{Modifiers:X4}, vk=0x{VirtualKey:X2}, Win32Error={Win32Error})",
                 shortcut.DisplayString,
@@ -301,6 +322,7 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
                 modifiers,
                 virtualKey,
                 errorCode);
+#endif
         }
 
         if (ids.Count == 0)
@@ -363,7 +385,9 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService, IDisposab
         {
             if (!UnregisterHotKey(IntPtr.Zero, id))
             {
+#if DEBUG
                 _logger.LogDebug("Failed to unregister global hotkey id={HotkeyId}. Win32Error={Win32Error}", id, Marshal.GetLastWin32Error());
+#endif
             }
         }
     }

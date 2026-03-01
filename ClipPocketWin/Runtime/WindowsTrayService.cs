@@ -128,7 +128,9 @@ public sealed class WindowsTrayService : ITrayService, IDisposable
             _started = true;
         }
 
+#if DEBUG
         _logger.LogInformation("Windows tray service started.");
+#endif
         return Result.Success();
     }
 
@@ -166,7 +168,9 @@ public sealed class WindowsTrayService : ITrayService, IDisposable
             }
         }
 
+#if DEBUG
         _logger.LogInformation("Windows tray service stopped.");
+#endif
         return Task.FromResult(Result.Success());
     }
 
@@ -178,7 +182,9 @@ public sealed class WindowsTrayService : ITrayService, IDisposable
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Failed to dispose tray service cleanly.");
+#endif
         }
     }
 
@@ -203,12 +209,16 @@ public sealed class WindowsTrayService : ITrayService, IDisposable
 
             if (getMessageResult == -1)
             {
+#if DEBUG
                 _logger.LogError("Tray message loop failed with Win32 error {ErrorCode}.", Marshal.GetLastWin32Error());
+#endif
             }
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogError(exception, "Tray message loop terminated unexpectedly.");
+#endif
         }
         finally
         {
@@ -547,7 +557,9 @@ public sealed class WindowsTrayService : ITrayService, IDisposable
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Tray command {CommandId} execution failed.", command);
+#endif
         }
     }
 

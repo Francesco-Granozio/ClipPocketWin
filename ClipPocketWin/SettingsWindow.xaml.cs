@@ -124,7 +124,9 @@ public sealed partial class SettingsWindow : Window
         Result registrationResult = LaunchAtLoginRegistry.SetEnabled(enabled);
         if (registrationResult.IsFailure)
         {
+#if DEBUG
             _logger?.LogWarning(registrationResult.Error?.Exception, "Failed to set launch at login. Code {ErrorCode}: {Message}", registrationResult.Error?.Code, registrationResult.Error?.Message);
+#endif
             await ShowMessageAsync("Launch at Login", "Unable to apply launch-at-login at OS level. Setting value was not changed.");
             _isLoading = true;
             LaunchAtLoginToggle.IsOn = _settings.LaunchAtLogin;
@@ -180,7 +182,9 @@ public sealed partial class SettingsWindow : Window
         Result updateResult = await _globalHotkeyService.UpdateShortcutAsync(shortcut);
         if (updateResult.IsFailure)
         {
+#if DEBUG
             _logger?.LogWarning(updateResult.Error?.Exception, "Failed to update runtime global shortcut. Code {ErrorCode}: {Message}", updateResult.Error?.Code, updateResult.Error?.Message);
+#endif
             await ShowMessageAsync("Keyboard Shortcut", "Shortcut was saved but runtime registration failed. It may be already used by another app.");
         }
     }
@@ -296,7 +300,9 @@ public sealed partial class SettingsWindow : Window
         Result result = await _clipboardStateService.ClearClipboardHistoryAsync();
         if (result.IsFailure)
         {
+#if DEBUG
             _logger?.LogWarning(result.Error?.Exception, "Failed to clear clipboard history from settings. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
         }
     }
 
@@ -384,7 +390,7 @@ public sealed partial class SettingsWindow : Window
                     string iconCacheDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "ClipPocketWin", "cache", "excluded-icons");
-                    Directory.CreateDirectory(iconCacheDir);
+                    EnsureDirectoryCacheLimits(iconCacheDir, maxFileCount: 300, maxTotalBytes: 96L * 1024 * 1024);
                     string safeFileName = Convert.ToHexString(
                         System.Security.Cryptography.SHA256.HashData(
                             System.Text.Encoding.UTF8.GetBytes(ExePath)))[..16] + ".png";
@@ -523,7 +529,9 @@ public sealed partial class SettingsWindow : Window
         Result result = await _clipboardStateService.SaveSettingsAsync(nextSettings);
         if (result.IsFailure)
         {
+#if DEBUG
             _logger?.LogWarning(result.Error?.Exception, "Failed to save settings. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
+#endif
             await ShowMessageAsync("Settings", "Failed to save settings. Please try again.");
             InitializeView();
             return;
@@ -644,5 +652,47 @@ public sealed partial class SettingsWindow : Window
         }
 
         return key.ToString();
+    }
+
+    private static void EnsureDirectoryCacheLimits(string directoryPath, int maxFileCount, long maxTotalBytes)
+    {
+        try
+        {
+            Directory.CreateDirectory(directoryPath);
+            DirectoryInfo directory = new(directoryPath);
+            FileInfo[] files = directory.GetFiles();
+            if (files.Length == 0)
+            {
+                return;
+            }
+
+            Array.Sort(files, static (left, right) => right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
+
+            int keptFiles = 0;
+            long keptBytes = 0;
+            foreach (FileInfo file in files)
+            {
+                long fileLength = Math.Max(0L, file.Length);
+                bool keepWithinCount = keptFiles < maxFileCount;
+                bool keepWithinSize = (keptBytes + fileLength) <= maxTotalBytes || keptFiles == 0;
+                if (keepWithinCount && keepWithinSize)
+                {
+                    keptFiles++;
+                    keptBytes += fileLength;
+                    continue;
+                }
+
+                try
+                {
+                    file.Delete();
+                }
+                catch
+                {
+                }
+            }
+        }
+        catch
+        {
+        }
     }
 }

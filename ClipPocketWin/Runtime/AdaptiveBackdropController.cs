@@ -414,6 +414,7 @@ public sealed class AdaptiveBackdropController : IDisposable
 
     private void LogBackdropSamplingDiagnostics(BackdropSamplingDiagnostics diagnostics, double measuredLuminance, double smoothedLuminance)
     {
+#if DEBUG
         if (_logger == null)
         {
             return;
@@ -449,6 +450,7 @@ public sealed class AdaptiveBackdropController : IDisposable
                 diagnostics.CandidateWindowCount);
             _lastBackdropFallbackWarningUtc = now;
         }
+#endif
     }
 
     private void ApplyBackdropReadability(double luminance)

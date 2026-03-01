@@ -112,7 +112,9 @@ public sealed class ClipboardStateService : IClipboardStateService
                 _pinnedItems = pinnedResult.Value!.ToList();
             }
 
+#if DEBUG
             _logger.LogInformation("Initialized state with {HistoryCount} history items and {PinnedCount} pinned items", _clipboardItems.Count, _pinnedItems.Count);
+#endif
             OnStateChanged();
             return Result.Success();
         }
@@ -199,7 +201,9 @@ public sealed class ClipboardStateService : IClipboardStateService
             _runtimeStarted = true;
         }
 
+#if DEBUG
         _logger.LogInformation("Clipboard runtime monitor started.");
+#endif
         return Result.Success();
     }
 
@@ -227,7 +231,9 @@ public sealed class ClipboardStateService : IClipboardStateService
             _runtimeStarted = false;
         }
 
+#if DEBUG
         _logger.LogInformation("Clipboard runtime monitor stopped.");
+#endif
         return Result.Success();
     }
 

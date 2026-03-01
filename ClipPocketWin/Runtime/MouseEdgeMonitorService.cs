@@ -59,7 +59,9 @@ public sealed class MouseEdgeMonitorService : IEdgeMonitorService, IDisposable
             _isEdgeActive = false;
         }
 
+#if DEBUG
         _logger.LogInformation("Mouse edge monitor started with show/hide delays {ShowDelay}s/{HideDelay}s.", showDelaySeconds, hideDelaySeconds);
+#endif
         return Task.FromResult(Result.Success());
     }
 
@@ -77,7 +79,9 @@ public sealed class MouseEdgeMonitorService : IEdgeMonitorService, IDisposable
             _hideDelay = TimeSpan.FromSeconds(hideDelaySeconds);
         }
 
+#if DEBUG
         _logger.LogInformation("Mouse edge monitor delays updated to {ShowDelay}s/{HideDelay}s.", showDelaySeconds, hideDelaySeconds);
+#endif
         return Task.FromResult(Result.Success());
     }
 
@@ -111,7 +115,9 @@ public sealed class MouseEdgeMonitorService : IEdgeMonitorService, IDisposable
                 await monitorTask.WaitAsync(cancellationToken);
             }
 
+#if DEBUG
             _logger.LogInformation("Mouse edge monitor stopped.");
+#endif
             return Result.Success();
         }
         catch (OperationCanceledException) when (cts?.IsCancellationRequested == true)
@@ -140,7 +146,9 @@ public sealed class MouseEdgeMonitorService : IEdgeMonitorService, IDisposable
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogWarning(exception, "Failed to dispose edge monitor service.");
+#endif
         }
     }
 
@@ -183,7 +191,9 @@ public sealed class MouseEdgeMonitorService : IEdgeMonitorService, IDisposable
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogError(exception, "Mouse edge monitor loop crashed.");
+#endif
         }
     }
 

@@ -30,7 +30,10 @@ public sealed partial class EditTextWindow : Window
         _appWindow = ConfigureWindowPresentation();
 
         App app = (App)Microsoft.UI.Xaml.Application.Current;
-        ILogger<EditTextWindow>? logger = app.Services.GetService<ILogger<EditTextWindow>>();
+        ILogger<EditTextWindow>? logger = null;
+#if DEBUG
+        logger = app.Services.GetService<ILogger<EditTextWindow>>();
+#endif
         AdaptiveBackdropOptions backdropOptions = new()
         {
             DiagnosticName = nameof(EditTextWindow),

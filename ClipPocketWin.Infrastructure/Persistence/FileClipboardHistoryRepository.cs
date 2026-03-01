@@ -72,7 +72,9 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
 
             await File.WriteAllBytesAsync(destinationPath, serialized, cancellationToken);
 
+#if DEBUG
             _logger.LogInformation("Saved {Count} clipboard items to {Path}", filteredItems.Length, destinationPath);
+#endif
             return Result.Success();
         }
         catch (OperationCanceledException)

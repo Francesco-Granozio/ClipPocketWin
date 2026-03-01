@@ -36,14 +36,16 @@ namespace ClipPocketWin
             panelService.AttachWindowHandle(windowHandle);
 
             Result startupResult = await InitializeRuntimeAsync();
-            ILogger<App>? logger = Services.GetService<ILogger<App>>();
             if (startupResult.IsFailure)
             {
+#if DEBUG
+                ILogger<App>? logger = Services.GetService<ILogger<App>>();
                 logger?.LogError(
                     startupResult.Error?.Exception,
                     "Application runtime initialization failed with code {ErrorCode}: {Message}",
                     startupResult.Error?.Code,
                     startupResult.Error?.Message);
+#endif
             }
 
             _window.Closed += Window_Closed;
@@ -98,8 +100,14 @@ namespace ClipPocketWin
             Result stopResult = await _appRuntimeService.StopAsync();
             if (stopResult.IsFailure)
             {
+#if DEBUG
                 ILogger<App>? logger = Services.GetService<ILogger<App>>();
-                logger?.LogWarning(stopResult.Error?.Exception, "Failed to stop runtime cleanly with code {ErrorCode}: {Message}", stopResult.Error?.Code, stopResult.Error?.Message);
+                logger?.LogWarning(
+                    stopResult.Error?.Exception,
+                    "Failed to stop runtime cleanly with code {ErrorCode}: {Message}",
+                    stopResult.Error?.Code,
+                    stopResult.Error?.Message);
+#endif
                 return;
             }
 
@@ -121,8 +129,14 @@ namespace ClipPocketWin
             Result hideResult = await panelService.HideAsync();
             if (hideResult.IsFailure)
             {
+#if DEBUG
                 ILogger<App>? logger = Services.GetService<ILogger<App>>();
-                logger?.LogWarning(hideResult.Error?.Exception, "Failed to auto-hide panel on window deactivation. Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
+                logger?.LogWarning(
+                    hideResult.Error?.Exception,
+                    "Failed to auto-hide panel on window deactivation. Code {ErrorCode}: {Message}",
+                    hideResult.Error?.Code,
+                    hideResult.Error?.Message);
+#endif
             }
         }
 
@@ -142,6 +156,7 @@ namespace ClipPocketWin
             ServiceCollection services = new();
             services.AddLogging(builder =>
             {
+#if DEBUG
                 string logsDirectory = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "ClipPocketWin",
@@ -150,6 +165,7 @@ namespace ClipPocketWin
 
                 builder.AddConsole();
                 builder.AddProvider(new FileLoggerProvider(logFilePath));
+#endif
             });
             services.AddClipPocketInfrastructure();
             services.AddClipPocketApplication();

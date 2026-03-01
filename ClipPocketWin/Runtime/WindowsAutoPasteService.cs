@@ -89,16 +89,22 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
             return Result.Failure(new Error(ErrorCode.PanelOperationFailed, "The previously focused external window is no longer valid for auto-paste."));
         }
 
+#if DEBUG
         _logger.LogInformation("Auto-paste target window captured: {TargetWindow}.", targetWindow);
+#endif
 
         bool targetActivated = await TryActivateTargetWindowAsync(targetWindow, cancellationToken);
         if (!targetActivated)
         {
+#if DEBUG
             _logger.LogWarning("Target window {TargetWindow} did not become foreground before Ctrl+V. Continuing with paste fallback.", targetWindow);
+#endif
         }
         else
         {
+#if DEBUG
             _logger.LogInformation("Target window {TargetWindow} is foreground; sending Ctrl+V.", targetWindow);
+#endif
         }
 
         await Task.Delay(PasteDispatchDelayMs, cancellationToken);
@@ -108,7 +114,9 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
             return sendResult;
         }
 
+#if DEBUG
         _logger.LogInformation("Ctrl+V dispatch completed for target window {TargetWindow}.", targetWindow);
+#endif
         return Result.Success();
     }
 
@@ -118,6 +126,7 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
         {
             nint foregroundBefore = GetForegroundWindow();
             bool setForegroundResult = SetForegroundWindow(targetWindow);
+#if DEBUG
             _logger.LogInformation(
                 "Auto-paste focus attempt {Attempt}/{MaxAttempts}: target={TargetWindow}, foregroundBefore={ForegroundBefore}, setForegroundResult={SetForegroundResult}",
                 attempt,
@@ -125,11 +134,13 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
                 targetWindow,
                 foregroundBefore,
                 setForegroundResult);
+#endif
 
             await Task.Delay(FocusRetryDelayMs, cancellationToken);
 
             nint foregroundAfter = GetForegroundWindow();
             bool matched = foregroundAfter == targetWindow;
+#if DEBUG
             _logger.LogInformation(
                 "Auto-paste focus check {Attempt}/{MaxAttempts}: target={TargetWindow}, foregroundAfter={ForegroundAfter}, matched={Matched}",
                 attempt,
@@ -137,6 +148,7 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
                 targetWindow,
                 foregroundAfter,
                 matched);
+#endif
 
             if (matched)
             {

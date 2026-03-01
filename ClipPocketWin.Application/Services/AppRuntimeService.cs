@@ -69,7 +69,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
             await StartOutsideClickMonitorDegradedAsync(cancellationToken);
 
             _started = true;
+#if DEBUG
             _logger.LogInformation("Application runtime services started.");
+#endif
             return Result.Success();
         }
         finally
@@ -93,25 +95,33 @@ public sealed class AppRuntimeService : IAppRuntimeService
             Result trayResult = await _trayService.StopAsync(cancellationToken);
             if (trayResult.IsFailure)
             {
+#if DEBUG
                 _logger.LogWarning(trayResult.Error?.Exception, "Tray stop failed with code {ErrorCode}: {Message}", trayResult.Error?.Code, trayResult.Error?.Message);
+#endif
             }
 
             Result hotkeyResult = await _globalHotkeyService.StopAsync(cancellationToken);
             if (hotkeyResult.IsFailure)
             {
+#if DEBUG
                 _logger.LogWarning(hotkeyResult.Error?.Exception, "Hotkey stop failed with code {ErrorCode}: {Message}", hotkeyResult.Error?.Code, hotkeyResult.Error?.Message);
+#endif
             }
 
             Result edgeResult = await _edgeMonitorService.StopAsync(cancellationToken);
             if (edgeResult.IsFailure)
             {
+#if DEBUG
                 _logger.LogWarning(edgeResult.Error?.Exception, "Edge monitor stop failed with code {ErrorCode}: {Message}", edgeResult.Error?.Code, edgeResult.Error?.Message);
+#endif
             }
 
             Result outsideClickStopResult = await StopOutsideClickMonitorAsync(cancellationToken);
             if (outsideClickStopResult.IsFailure)
             {
+#if DEBUG
                 _logger.LogWarning(outsideClickStopResult.Error?.Exception, "Outside-click monitor stop failed with code {ErrorCode}: {Message}", outsideClickStopResult.Error?.Code, outsideClickStopResult.Error?.Message);
+#endif
             }
 
             Result stateRuntimeResult = await _clipboardStateService.StopRuntimeAsync(cancellationToken);
@@ -124,7 +134,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
             }
 
             _started = false;
+#if DEBUG
             _logger.LogInformation("Application runtime services stopped.");
+#endif
             return Result.Success();
         }
         finally
@@ -138,7 +150,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result trayResult = await _trayService.StartAsync(cancellationToken);
         if (trayResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(trayResult.Error?.Exception, "Tray failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", trayResult.Error?.Code, trayResult.Error?.Message);
+#endif
         }
     }
 
@@ -147,7 +161,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result hotkeyResult = await _globalHotkeyService.StartAsync(shortcut, cancellationToken);
         if (hotkeyResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(hotkeyResult.Error?.Exception, "Hotkey failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", hotkeyResult.Error?.Code, hotkeyResult.Error?.Message);
+#endif
         }
     }
 
@@ -161,7 +177,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result edgeResult = await _edgeMonitorService.StartAsync(settings.AutoShowDelay, settings.AutoHideDelay, cancellationToken);
         if (edgeResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(edgeResult.Error?.Exception, "Edge monitor failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", edgeResult.Error?.Code, edgeResult.Error?.Message);
+#endif
         }
     }
 
@@ -170,7 +188,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result startResult = await StartOutsideClickMonitorAsync(cancellationToken);
         if (startResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(startResult.Error?.Exception, "Outside-click monitor failed to start; continuing in degraded mode. Code {ErrorCode}: {Message}", startResult.Error?.Code, startResult.Error?.Message);
+#endif
         }
     }
 
@@ -266,7 +286,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
                 Result hideResult = await _windowPanelService.HideAsync(cancellationToken);
                 if (hideResult.IsFailure)
                 {
+#if DEBUG
                     _logger.LogWarning(hideResult.Error?.Exception, "Panel hide failed (outside click). Code {ErrorCode}: {Message}", hideResult.Error?.Code, hideResult.Error?.Message);
+#endif
                 }
             }
         }
@@ -275,7 +297,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         }
         catch (Exception exception)
         {
+#if DEBUG
             _logger.LogError(exception, "Outside-click monitor loop terminated unexpectedly.");
+#endif
         }
     }
 
@@ -352,7 +376,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result toggleResult = await _windowPanelService.ToggleAsync();
         if (toggleResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(toggleResult.Error?.Exception, "Panel toggle failed ({Source}). Code {ErrorCode}: {Message}", source, toggleResult.Error?.Code, toggleResult.Error?.Message);
+#endif
         }
     }
 
@@ -364,7 +390,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
 
         if (operationResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(operationResult.Error?.Exception, "Panel toggle failed (hotkey). Code {ErrorCode}: {Message}", operationResult.Error?.Code, operationResult.Error?.Message);
+#endif
         }
     }
 
@@ -373,7 +401,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result showResult = await _windowPanelService.ShowAsync();
         if (showResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(showResult.Error?.Exception, "Panel show failed ({Source}). Code {ErrorCode}: {Message}", source, showResult.Error?.Code, showResult.Error?.Message);
+#endif
         }
     }
 
@@ -382,7 +412,9 @@ public sealed class AppRuntimeService : IAppRuntimeService
         Result hideResult = await _windowPanelService.HideAsync();
         if (hideResult.IsFailure)
         {
+#if DEBUG
             _logger.LogWarning(hideResult.Error?.Exception, "Panel hide failed ({Source}). Code {ErrorCode}: {Message}", source, hideResult.Error?.Code, hideResult.Error?.Message);
+#endif
         }
     }
 
