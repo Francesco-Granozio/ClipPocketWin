@@ -1156,11 +1156,34 @@ namespace ClipPocketWin
         private static ClipboardCardStyle BuildSolidColorCardStyle(Windows.UI.Color color)
         {
             return new ClipboardCardStyle(
-                CreateCardBackgroundBrush(color),
-                CreateHeaderBackgroundBrush(color),
-                CreateBodyBackgroundBrush(color),
+                new SolidColorBrush(color),
+                CreateColorHeaderBackgroundBrush(color),
+                new SolidColorBrush(color),
                 new SolidColorBrush(Windows.UI.Color.FromArgb(58, 255, 255, 255)),
                 new SolidColorBrush(GetContrastingColor(color)));
+        }
+
+        private static LinearGradientBrush CreateColorHeaderBackgroundBrush(Windows.UI.Color color)
+        {
+            LinearGradientBrush brush = new()
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0),
+                EndPoint = new Windows.Foundation.Point(0, 1)
+            };
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = color,
+                Offset = 0
+            });
+
+            brush.GradientStops.Add(new GradientStop
+            {
+                Color = Darken(color, 0.32f),
+                Offset = 1
+            });
+
+            return brush;
         }
 
         private static LinearGradientBrush CreateHeaderBackgroundBrush(Windows.UI.Color accentColor)
