@@ -1,5 +1,6 @@
 using ClipPocketWin.Application.Abstractions;
 using ClipPocketWin.Domain.Models;
+using ClipPocketWin.Runtime;
 using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -43,7 +44,7 @@ namespace ClipPocketWin
         private const float MinLuminosityOpacity = 0.00f;
         private const float MaxLuminosityOpacity = 0.66f;
         private const float MaxAdditionalContrastTint = 0.30f;
-        private const double LuminanceProtectionThreshold = 0.42;
+        private const double LuminanceProtectionThreshold = 0.84;
         private const double LuminanceFallbackValue = 0.74;
         private const double LuminanceRiseSmoothing = 0.72;
         private const double ReliableLuminanceDecaySmoothing = 0.20;
@@ -78,6 +79,7 @@ namespace ClipPocketWin
         private readonly IWindowPanelService _windowPanelService;
         private readonly ILogger<MainWindow>? _logger;
         private readonly ObservableCollection<ClipboardCardViewModel> _clipboardCards = [];
+        private readonly AdaptiveBackdropController? _adaptiveBackdropController;
         private SettingsWindow? _settingsWindow;
         private string _searchText = string.Empty;
         private ClipboardSection _selectedSection = ClipboardSection.History;
@@ -90,7 +92,6 @@ namespace ClipPocketWin
         private double _smoothedBackdropLuminance = LuminanceFallbackValue;
         private bool _hasBackdropSample;
         private bool _isBackdropSampling;
-        private bool _wasVisibleForSampling;
         private BackdropSampleSource _lastLoggedSampleSource = BackdropSampleSource.None;
         private DateTimeOffset _lastBackdropDiagnosticLogUtc = DateTimeOffset.MinValue;
         private DateTimeOffset _lastBackdropFallbackWarningUtc = DateTimeOffset.MinValue;
@@ -166,8 +167,34 @@ namespace ClipPocketWin
             int y = (displayArea.WorkArea.Height - windowHeight) / 2;
             m_AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, windowWidth, windowHeight));
 
-            // Apply true glass blur with maximum transparency
-            if (TrySetAcrylicBackdrop())
+            AdaptiveBackdropOptions backdropOptions = new()
+            {
+                DiagnosticName = nameof(MainWindow),
+                BaseTintColor = BaseTintColor,
+                StrongProtectionTintColor = StrongProtectionTintColor,
+                MinTintOpacity = MinTintOpacity,
+                MaxTintOpacity = MaxTintOpacity,
+                MinLuminosityOpacity = MinLuminosityOpacity,
+                MaxLuminosityOpacity = MaxLuminosityOpacity,
+                MaxAdditionalContrastTint = MaxAdditionalContrastTint,
+                LuminanceProtectionThreshold = LuminanceProtectionThreshold,
+                LuminanceFallbackValue = LuminanceFallbackValue,
+                ProtectionCurveGamma = ProtectionCurveGamma,
+                LuminanceRiseSmoothing = LuminanceRiseSmoothing,
+                ReliableLuminanceDecaySmoothing = ReliableLuminanceDecaySmoothing,
+                UnreliableLuminanceDecaySmoothing = UnreliableLuminanceDecaySmoothing,
+                MinimumReliableUnderWindowSamples = MinimumReliableUnderWindowSamples,
+                PostMoveReadabilityDelaySeconds = PostMoveReadabilityDelaySeconds,
+                PostShowReadabilityDelaySeconds = PostShowReadabilityDelaySeconds,
+                ContinuousReadabilityIntervalSeconds = ContinuousReadabilityIntervalSeconds,
+                BackdropDiagnosticLogIntervalSeconds = BackdropDiagnosticLogIntervalSeconds,
+                BackdropFallbackWarningIntervalSeconds = BackdropFallbackWarningIntervalSeconds,
+                FallbackMinAlpha = 190,
+                FallbackMaxAlpha = 255
+            };
+
+            _adaptiveBackdropController = new AdaptiveBackdropController(this, m_AppWindow, backdropOptions, _logger);
+            if (_adaptiveBackdropController.Initialize())
             {
                 m_AppWindow.Changed += AppWindow_Changed;
             }
@@ -280,18 +307,7 @@ namespace ClipPocketWin
 
         private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
         {
-            if (args.DidPositionChange || args.DidSizeChange)
-            {
-                if (!IsWindowVisibleForSampling())
-                {
-                    return;
-                }
-
-                _wasVisibleForSampling = true;
-                _ = RefreshBackdropProtectionAsync();
-                TriggerDelayedReadabilityCheck();
-                EnsureContinuousReadabilityCheck();
-            }
+            _adaptiveBackdropController?.HandleAppWindowChanged(args);
         }
 
         private bool IsWindowVisibleForSampling()
@@ -2140,32 +2156,7 @@ namespace ClipPocketWin
 
         private void Window_Activated(object sender, WindowActivatedEventArgs args)
         {
-            // Always keep acrylic active, even when window loses focus
-            if (_configurationSource != null)
-            {
-                _configurationSource.IsInputActive = true;
-            }
-
-            bool isVisible = IsWindowVisibleForSampling();
-            if (args.WindowActivationState == WindowActivationState.Deactivated || !isVisible)
-            {
-                StopContinuousReadabilityCheck();
-                _wasVisibleForSampling = false;
-                return;
-            }
-
-            EnsureContinuousReadabilityCheck();
-
-            bool isJustShown = !_wasVisibleForSampling;
-            _wasVisibleForSampling = true;
-
-            if (!isJustShown)
-            {
-                return;
-            }
-
-            _ = RefreshBackdropProtectionAsync();
-            TriggerDelayedReadabilityCheck(PostShowReadabilityDelaySeconds);
+            _adaptiveBackdropController?.HandleWindowActivated(args);
         }
 
         private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
@@ -2222,6 +2213,7 @@ namespace ClipPocketWin
         private void Window_Closed(object sender, WindowEventArgs args)
         {
             _clipboardStateService.StateChanged -= ClipboardStateService_StateChanged;
+            m_AppWindow.Changed -= AppWindow_Changed;
             _delayedReadabilityTimer?.Stop();
             if (_continuousReadabilityTimer != null)
             {
@@ -2230,8 +2222,8 @@ namespace ClipPocketWin
                 _continuousReadabilityTimer = null;
             }
 
-            _wasVisibleForSampling = false;
             StopRelativeTimeUpdates();
+            _adaptiveBackdropController?.Dispose();
             _acrylicController?.Dispose();
             _acrylicController = null;
             _configurationSource = null;

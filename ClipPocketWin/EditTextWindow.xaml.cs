@@ -1,6 +1,7 @@
+using ClipPocketWin.Runtime;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI;
-using Microsoft.UI.Composition;
-using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -8,7 +9,6 @@ using Microsoft.UI.Xaml.Input;
 using System;
 using System.Collections.Generic;
 using Windows.System;
-using WinRT;
 using WinRT.Interop;
 
 namespace ClipPocketWin;
@@ -17,8 +17,8 @@ public sealed partial class EditTextWindow : Window
 {
     private static readonly Windows.UI.Color AcrylicTintColor = Windows.UI.Color.FromArgb(255, 18, 22, 52);
     private readonly string _initialText;
-    private DesktopAcrylicController? _acrylicController;
-    private SystemBackdropConfiguration? _configurationSource;
+    private readonly AppWindow _appWindow;
+    private readonly AdaptiveBackdropController? _adaptiveBackdropController;
 
     public event EventHandler<TextCommittedEventArgs>? TextCommitted;
 
@@ -27,12 +27,34 @@ public sealed partial class EditTextWindow : Window
         InitializeComponent();
         _initialText = initialText ?? string.Empty;
         EditorTextBox.Text = _initialText;
-        ConfigureWindowPresentation();
-        TrySetAcrylicBackdrop();
+        _appWindow = ConfigureWindowPresentation();
+
+        App app = (App)Microsoft.UI.Xaml.Application.Current;
+        ILogger<EditTextWindow>? logger = app.Services.GetService<ILogger<EditTextWindow>>();
+        AdaptiveBackdropOptions backdropOptions = new()
+        {
+            DiagnosticName = nameof(EditTextWindow),
+            BaseTintColor = AcrylicTintColor,
+            StrongProtectionTintColor = Windows.UI.Color.FromArgb(255, 3, 5, 14),
+            MinTintOpacity = 0.20f,
+            MaxTintOpacity = 0.90f,
+            MinLuminosityOpacity = 0.08f,
+            MaxLuminosityOpacity = 0.72f,
+            FallbackMinAlpha = 220,
+            FallbackMaxAlpha = 255
+        };
+
+        _adaptiveBackdropController = new AdaptiveBackdropController(this, _appWindow, backdropOptions, logger);
+        if (_adaptiveBackdropController.Initialize())
+        {
+            _appWindow.Changed += AppWindow_Changed;
+        }
+
+        Activated += Window_Activated;
         Closed += Window_Closed;
     }
 
-    private void ConfigureWindowPresentation()
+    private AppWindow ConfigureWindowPresentation()
     {
         nint windowHandle = WindowNative.GetWindowHandle(this);
         WindowId windowId = Win32Interop.GetWindowIdFromWindow(windowHandle);
@@ -51,45 +73,32 @@ public sealed partial class EditTextWindow : Window
         int x = displayArea.WorkArea.X + ((displayArea.WorkArea.Width - width) / 2);
         int y = displayArea.WorkArea.Y + ((displayArea.WorkArea.Height - height) / 2);
         appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, width, height));
+
+        return appWindow;
     }
 
-    private bool TrySetAcrylicBackdrop()
+    private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
     {
-        if (!DesktopAcrylicController.IsSupported())
-        {
-            return false;
-        }
+        _adaptiveBackdropController?.HandleAppWindowChanged(args);
+    }
 
-        _configurationSource = new SystemBackdropConfiguration
-        {
-            Theme = SystemBackdropTheme.Dark,
-            IsInputActive = true
-        };
-
-        _acrylicController = new DesktopAcrylicController
-        {
-            TintColor = AcrylicTintColor,
-            TintOpacity = 0.2f,
-            LuminosityOpacity = 0.08f,
-            FallbackColor = Windows.UI.Color.FromArgb(220, AcrylicTintColor.R, AcrylicTintColor.G, AcrylicTintColor.B)
-        };
-
-        _acrylicController.AddSystemBackdropTarget(this.As<ICompositionSupportsSystemBackdrop>());
-        _acrylicController.SetSystemBackdropConfiguration(_configurationSource);
-        return true;
+    private void Window_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        _adaptiveBackdropController?.HandleWindowActivated(args);
     }
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
+        _appWindow.Changed -= AppWindow_Changed;
+        Activated -= Window_Activated;
+
         string editedText = EditorTextBox.Text ?? string.Empty;
         if (!string.Equals(editedText, _initialText, StringComparison.Ordinal))
         {
             TextCommitted?.Invoke(this, new TextCommittedEventArgs(editedText));
         }
 
-        _acrylicController?.Dispose();
-        _acrylicController = null;
-        _configurationSource = null;
+        _adaptiveBackdropController?.Dispose();
     }
 
     private void EditorTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
