@@ -245,6 +245,24 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             }
             */
 
+
+            if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
+            {
+                return Result<IReadOnlyList<ClipboardItem>>.Success([
+                    new ClipboardItem
+                    {
+                        Type = ClipboardItemType.Text,
+                        Timestamp = now,
+                        SourceApplicationIdentifier = sourceApplicationIdentifier,
+                        SourceApplicationExecutablePath = sourceApplicationExecutablePath,
+                        RichTextContent = richTextContent,
+                        TextContent = richTextContent!.PlainText
+                    }
+                ]);
+            }
+
+
+
             if (TryReadImagePayload(out byte[]? imagePayload))
             {
                 return Result<IReadOnlyList<ClipboardItem>>.Success([
