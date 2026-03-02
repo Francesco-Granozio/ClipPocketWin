@@ -57,7 +57,7 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
             return Task.FromResult(imageWriteResult);
         }
 
-        string? textPayload = ResolveTextPayload(item);
+        string? textPayload = item.ResolveTextPayload();
         if (string.IsNullOrWhiteSpace(textPayload))
         {
             return Task.FromResult(Result.Failure(new Error(
@@ -157,21 +157,6 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
         }
 
         return false;
-    }
-
-    private static string? ResolveTextPayload(ClipboardItem item)
-    {
-        return item.Type switch
-        {
-            ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
-                => item.TextContent,
-            ClipboardItemType.File
-                => item.FilePath ?? item.TextContent,
-            ClipboardItemType.RichText
-                => item.RichTextContent?.PlainText ?? item.TextContent,
-            _
-                => item.TextContent
-        };
     }
 
     private static Result WriteUnicodeTextToClipboard(string text)

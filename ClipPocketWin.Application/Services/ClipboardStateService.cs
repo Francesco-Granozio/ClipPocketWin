@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ClipPocketWin.Application.Services;
 
-public sealed class ClipboardStateService : IClipboardStateService
+public sealed partial class ClipboardStateService : IClipboardStateService
 {
     private readonly IClipboardMonitor _clipboardMonitor;
     private readonly IClipboardHistoryRepository _historyRepository;
@@ -19,6 +19,8 @@ public sealed class ClipboardStateService : IClipboardStateService
 
     private List<ClipboardItem> _clipboardItems = [];
     private List<PinnedClipboardItem> _pinnedItems = [];
+    private ClipboardItem[] _clipboardItemsSnapshot = [];
+    private PinnedClipboardItem[] _pinnedItemsSnapshot = [];
     private ClipPocketSettings _settings = new();
     private bool _runtimeStarted;
 
@@ -46,7 +48,7 @@ public sealed class ClipboardStateService : IClipboardStateService
         {
             lock (_syncRoot)
             {
-                return _clipboardItems.ToArray();
+                return _clipboardItemsSnapshot;
             }
         }
     }
@@ -57,7 +59,7 @@ public sealed class ClipboardStateService : IClipboardStateService
         {
             lock (_syncRoot)
             {
-                return _pinnedItems.ToArray();
+                return _pinnedItemsSnapshot;
             }
         }
     }
@@ -107,9 +109,10 @@ public sealed class ClipboardStateService : IClipboardStateService
                 _clipboardItems = historyResult.Value!.ToList();
                 if (_clipboardItems.Count > targetLimit)
                 {
-                    _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+                    _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
                 }
                 _pinnedItems = pinnedResult.Value!.ToList();
+                RefreshSnapshotsUnsafe();
             }
 
 #if DEBUG
@@ -157,8 +160,10 @@ public sealed class ClipboardStateService : IClipboardStateService
             int targetLimit = _settings.EffectiveHistoryLimit;
             if (_clipboardItems.Count > targetLimit)
             {
-                _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+                _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
             }
+
+            RefreshSnapshotsUnsafe();
         }
 
         Result persistResult = await PersistHistoryAsync(cancellationToken);
@@ -242,8 +247,14 @@ public sealed class ClipboardStateService : IClipboardStateService
         bool changed;
         lock (_syncRoot)
         {
-            changed = _clipboardItems.RemoveAll(x => x.Id == id) > 0;
-            _pinnedItems = _pinnedItems.Where(x => x.OriginalItem.Id != id).ToList();
+            bool historyChanged = _clipboardItems.RemoveAll(x => x.Id == id) > 0;
+            bool pinnedChanged = _pinnedItems.RemoveAll(x => x.OriginalItem.Id == id) > 0;
+            changed = historyChanged || pinnedChanged;
+
+            if (changed)
+            {
+                RefreshSnapshotsUnsafe();
+            }
         }
 
         if (!changed)
@@ -328,6 +339,7 @@ public sealed class ClipboardStateService : IClipboardStateService
         lock (_syncRoot)
         {
             _clipboardItems.Clear();
+            RefreshSnapshotsUnsafe();
         }
 
         Result clearResult = await _historyRepository.ClearAsync(cancellationToken);
@@ -359,9 +371,11 @@ public sealed class ClipboardStateService : IClipboardStateService
                 _pinnedItems.Insert(0, new PinnedClipboardItem { OriginalItem = item });
                 if (_pinnedItems.Count > DomainLimits.MaxPinnedItems)
                 {
-                    _pinnedItems = _pinnedItems.Take(DomainLimits.MaxPinnedItems).ToList();
+                    _pinnedItems.RemoveRange(DomainLimits.MaxPinnedItems, _pinnedItems.Count - DomainLimits.MaxPinnedItems);
                 }
             }
+
+            RefreshSnapshotsUnsafe();
         }
 
         Result saveResult = await _pinnedRepository.SaveAsync(PinnedItems, cancellationToken);
@@ -392,9 +406,11 @@ public sealed class ClipboardStateService : IClipboardStateService
             int targetLimit = _settings.EffectiveHistoryLimit;
             if (_clipboardItems.Count > targetLimit)
             {
-                _clipboardItems = _clipboardItems.Take(targetLimit).ToList();
+                _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
                 limitEnforced = true;
             }
+
+            RefreshSnapshotsUnsafe();
         }
 
         Result saveSettingsResult = await _settingsRepository.SaveAsync(settings, cancellationToken);
@@ -428,80 +444,4 @@ public sealed class ClipboardStateService : IClipboardStateService
         return Result.Success();
     }
 
-    private async Task<Result> PersistHistoryAsync(CancellationToken cancellationToken)
-    {
-        IReadOnlyList<ClipboardItem> snapshot;
-        ClipPocketSettings settings;
-
-        lock (_syncRoot)
-        {
-            settings = _settings;
-            snapshot = _clipboardItems
-                .Where(item => item.Type != ClipboardItemType.Image || item.BinaryContent?.Length <= DomainLimits.MaxPersistedImageBytes)
-                .Take(DomainLimits.MaxHistoryItemsHardLimit)
-                .ToList();
-        }
-
-        if (!settings.RememberHistory)
-        {
-            return Result.Success();
-        }
-
-        Result saveResult = await _historyRepository.SaveAsync(snapshot, cancellationToken);
-        if (saveResult.IsFailure)
-        {
-            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist clipboard history.", saveResult.Error?.Exception));
-        }
-
-        return Result.Success();
-    }
-
-    private void OnStateChanged()
-    {
-        StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    private static bool IsExcludedBySourceApplication(ClipboardItem item, ClipPocketSettings settings)
-    {
-        if (settings.ExcludedAppIds.Count == 0 || string.IsNullOrWhiteSpace(item.SourceApplicationIdentifier))
-        {
-            return false;
-        }
-
-        string sourceId = item.SourceApplicationIdentifier.Trim();
-        string sourceIdWithoutExtension = sourceId.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? sourceId[..^4]
-            : sourceId;
-
-        foreach (string excluded in settings.ExcludedAppIds)
-        {
-            if (string.IsNullOrWhiteSpace(excluded))
-            {
-                continue;
-            }
-
-            string candidate = excluded.Trim();
-            if (string.Equals(candidate, sourceId, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(candidate, sourceIdWithoutExtension, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private Task<Result> HandleClipboardItemCapturedAsync(ClipboardItem item)
-    {
-        return AddClipboardItemAsync(item);
-    }
-
-    private ClipboardItem? ResolveClipboardItem(Guid id)
-    {
-        lock (_syncRoot)
-        {
-            return _clipboardItems.FirstOrDefault(x => x.Id == id)
-                ?? _pinnedItems.Select(x => x.OriginalItem).FirstOrDefault(x => x.Id == id);
-        }
-    }
 }
