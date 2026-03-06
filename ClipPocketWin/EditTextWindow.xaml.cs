@@ -298,3 +298,13 @@ public sealed partial class EditTextWindow : Window
         return state.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
     }
 }
+
+public sealed class TextCommittedEventArgs : EventArgs
+{
+    public TextCommittedEventArgs(string editedText)
+    {
+        EditedText = editedText;
+    }
+
+    public string EditedText { get; }
+}

@@ -390,7 +390,7 @@ public sealed partial class SettingsWindow : Window
                     string iconCacheDir = Path.Combine(
                         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "ClipPocketWin", "cache", "excluded-icons");
-                    CacheDirectoryPolicy.EnsureDirectoryAndApplyPolicy(iconCacheDir, maxFileCount: 300, maxTotalBytes: 96L * 1024 * 1024);
+                    EnsureDirectoryCacheLimits(iconCacheDir, maxFileCount: 300, maxTotalBytes: 96L * 1024 * 1024);
                     string safeFileName = Convert.ToHexString(
                         System.Security.Cryptography.SHA256.HashData(
                             System.Text.Encoding.UTF8.GetBytes(ExePath)))[..16] + ".png";
@@ -654,4 +654,45 @@ public sealed partial class SettingsWindow : Window
         return key.ToString();
     }
 
+    private static void EnsureDirectoryCacheLimits(string directoryPath, int maxFileCount, long maxTotalBytes)
+    {
+        try
+        {
+            Directory.CreateDirectory(directoryPath);
+            DirectoryInfo directory = new(directoryPath);
+            FileInfo[] files = directory.GetFiles();
+            if (files.Length == 0)
+            {
+                return;
+            }
+
+            Array.Sort(files, static (left, right) => right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
+
+            int keptFiles = 0;
+            long keptBytes = 0;
+            foreach (FileInfo file in files)
+            {
+                long fileLength = Math.Max(0L, file.Length);
+                bool keepWithinCount = keptFiles < maxFileCount;
+                bool keepWithinSize = (keptBytes + fileLength) <= maxTotalBytes || keptFiles == 0;
+                if (keepWithinCount && keepWithinSize)
+                {
+                    keptFiles++;
+                    keptBytes += fileLength;
+                    continue;
+                }
+
+                try
+                {
+                    file.Delete();
+                }
+                catch
+                {
+                }
+            }
+        }
+        catch
+        {
+        }
+    }
 }

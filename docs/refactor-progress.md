@@ -20,15 +20,15 @@ This document tracks the refactoring work requested for ClipPocketWin.
 
 - [done] Add bounded strategy for in-memory icon/image caches.
 - [done] Add cleanup policy for on-disk cache folders.
-- [done] Reduce avoidable hot-path list/array allocations in state/UI refresh paths.
-- [done] Consolidate duplicated helpers (for example DIB -> BMP conversion).
+- [todo] Reduce avoidable hot-path list/array allocations in state/UI refresh paths.
+- [todo] Consolidate duplicated helpers (for example DIB -> BMP conversion).
 
 ## Stream C - Architecture Refactor (P1)
 
-- [in_progress] Split monolithic `MainWindow.xaml.cs` responsibilities.
+- [todo] Split monolithic `MainWindow.xaml.cs` responsibilities.
 - [todo] Split `ClipboardStateService` into focused collaborators.
 - [todo] Split `WindowsClipboardMonitor` responsibilities.
-- [in_progress] Apply one-top-level-type-per-file where currently violated.
+- [todo] Apply one-top-level-type-per-file where currently violated.
 
 ## Stream D - Clipboard Model Evolution (P1/P2)
 
@@ -51,5 +51,3 @@ This document tracks the refactoring work requested for ClipPocketWin.
 - 2026-03-01: Created tracking document and initialized all streams.
 - 2026-03-01: Aligned logging strategy with new requirement: logger calls gated by `#if DEBUG`.
 - 2026-03-01: Implemented bounded in-memory cache eviction for image/file/source icon caches and added on-disk cleanup limits for drag/image/icon cache directories.
-- 2026-03-01: Reduced hot-path allocation churn in `ClipboardStateService` and `MainWindow` refresh/filter paths, and consolidated DIB->BMP conversion into shared runtime helper.
-- 2026-03-01: Began Stream C by extracting shared cache policy from `MainWindow`, splitting `AdaptiveBackdropOptions` and `TextCommittedEventArgs` into dedicated files, and wiring shared cache cleanup usage in settings flow.

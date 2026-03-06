@@ -399,19 +399,19 @@ namespace ClipPocketWin
 
         private void RefreshClipboardCards()
         {
-            IReadOnlyList<ClipboardItem> clipboardItems = _clipboardStateService.ClipboardItems;
-            IReadOnlyList<PinnedClipboardItem> pinnedItems = _clipboardStateService.PinnedItems;
-
-            int unfilteredSectionCount = GetSectionItemCount(_selectedSection, clipboardItems, pinnedItems);
-            List<ClipboardCardViewModel> nextCards = BuildFilteredCards(clipboardItems, pinnedItems);
+            int unfilteredSectionCount = GetSectionItems(_selectedSection).Count;
+            List<ClipboardCardViewModel> nextCards = BuildFilteredCards();
 
             const int maxCards = 80;
-            int visibleCardCount = Math.Min(maxCards, nextCards.Count);
+            if (nextCards.Count > maxCards)
+            {
+                nextCards = nextCards.Take(maxCards).ToList();
+            }
 
             _clipboardCards.Clear();
-            for (int i = 0; i < visibleCardCount; i++)
+            foreach (ClipboardCardViewModel card in nextCards)
             {
-                _clipboardCards.Add(nextCards[i]);
+                _clipboardCards.Add(card);
             }
 
             bool hasCards = _clipboardCards.Count > 0;
@@ -423,16 +423,13 @@ namespace ClipPocketWin
             }
         }
 
-        private static int GetSectionItemCount(
-            ClipboardSection section,
-            IReadOnlyList<ClipboardItem> clipboardItems,
-            IReadOnlyList<PinnedClipboardItem> pinnedItems)
+        private List<ClipboardItem> GetSectionItems(ClipboardSection section)
         {
             return section switch
             {
-                ClipboardSection.Pinned => pinnedItems.Count,
-                ClipboardSection.History => clipboardItems.Count,
-                _ => Math.Min(20, clipboardItems.Count)
+                ClipboardSection.Pinned => _clipboardStateService.PinnedItems.Select(x => x.OriginalItem).ToList(),
+                ClipboardSection.History => _clipboardStateService.ClipboardItems.ToList(),
+                _ => _clipboardStateService.ClipboardItems.Take(20).ToList()
             };
         }
 
@@ -466,101 +463,37 @@ namespace ClipPocketWin
             }
         }
 
-        private List<ClipboardCardViewModel> BuildFilteredCards(
-            IReadOnlyList<ClipboardItem> clipboardItems,
-            IReadOnlyList<PinnedClipboardItem> pinnedItems)
+        private List<ClipboardCardViewModel> BuildFilteredCards()
         {
-            HashSet<Guid> pinnedIds = new(pinnedItems.Count);
-            for (int i = 0; i < pinnedItems.Count; i++)
+            IEnumerable<ClipboardItem> sourceItems = _selectedSection switch
             {
-                _ = pinnedIds.Add(pinnedItems[i].OriginalItem.Id);
-            }
-
-            ClipboardItemType? selectedTypeFilter = _selectedTypeFilter;
-            string normalizedSearchText = NormalizeSearchText(_searchText);
-
-            int estimatedCount = _selectedSection switch
-            {
-                ClipboardSection.Pinned => pinnedItems.Count,
-                ClipboardSection.History => clipboardItems.Count,
-                _ => Math.Min(20, clipboardItems.Count)
+                ClipboardSection.Pinned => _clipboardStateService.PinnedItems.Select(x => x.OriginalItem),
+                ClipboardSection.History => _clipboardStateService.ClipboardItems,
+                _ => _clipboardStateService.ClipboardItems.Take(20)
             };
 
-            List<ClipboardCardViewModel> cards = new(estimatedCount);
-
-            switch (_selectedSection)
+            if (_selectedTypeFilter is ClipboardItemType selectedType)
             {
-                case ClipboardSection.Pinned:
-                    for (int i = 0; i < pinnedItems.Count; i++)
-                    {
-                        ClipboardItem item = pinnedItems[i].OriginalItem;
-                        if (!MatchesFilters(item, selectedTypeFilter, normalizedSearchText))
-                        {
-                            continue;
-                        }
-
-                        cards.Add(CreateCardViewModel(item, isPinned: true));
-                    }
-
-                    break;
-
-                case ClipboardSection.History:
-                    for (int i = 0; i < clipboardItems.Count; i++)
-                    {
-                        ClipboardItem item = clipboardItems[i];
-                        if (!MatchesFilters(item, selectedTypeFilter, normalizedSearchText))
-                        {
-                            continue;
-                        }
-
-                        cards.Add(CreateCardViewModel(item, pinnedIds.Contains(item.Id)));
-                    }
-
-                    break;
-
-                default:
-                    int recentLimit = Math.Min(20, clipboardItems.Count);
-                    for (int i = 0; i < recentLimit; i++)
-                    {
-                        ClipboardItem item = clipboardItems[i];
-                        if (!MatchesFilters(item, selectedTypeFilter, normalizedSearchText))
-                        {
-                            continue;
-                        }
-
-                        cards.Add(CreateCardViewModel(item, pinnedIds.Contains(item.Id)));
-                    }
-
-                    break;
+                sourceItems = sourceItems.Where(item => item.Type == selectedType);
             }
 
-            return cards;
-        }
-
-        private static bool MatchesFilters(ClipboardItem item, ClipboardItemType? selectedTypeFilter, string normalizedSearchText)
-        {
-            if (selectedTypeFilter is ClipboardItemType selectedType && item.Type != selectedType)
+            if (!string.IsNullOrWhiteSpace(_searchText))
             {
-                return false;
+                sourceItems = sourceItems.Where(item => IsFuzzyMatch(_searchText, item.DisplayString));
             }
 
-            if (normalizedSearchText.Length > 0 && !IsFuzzyMatchNormalized(normalizedSearchText, item.DisplayString))
-            {
-                return false;
-            }
+            HashSet<Guid> pinnedIds = _clipboardStateService.PinnedItems
+                .Select(x => x.OriginalItem.Id)
+                .ToHashSet();
 
-            return true;
+            return sourceItems
+                .Select(item => CreateCardViewModel(item, pinnedIds.Contains(item.Id)))
+                .ToList();
         }
 
-        private static string NormalizeSearchText(string query)
+        private static bool IsFuzzyMatch(string query, string text)
         {
-            return string.IsNullOrWhiteSpace(query)
-                ? string.Empty
-                : query.Trim().ToLowerInvariant();
-        }
-
-        private static bool IsFuzzyMatchNormalized(string normalizedQuery, string text)
-        {
+            string normalizedQuery = query.Trim().ToLowerInvariant();
             string normalizedText = text.ToLowerInvariant();
             if (normalizedQuery.Length == 0)
             {
@@ -586,12 +519,9 @@ namespace ClipPocketWin
 
         private void UpdateSectionButtons()
         {
-            IReadOnlyList<ClipboardItem> clipboardItems = _clipboardStateService.ClipboardItems;
-            IReadOnlyList<PinnedClipboardItem> pinnedItems = _clipboardStateService.PinnedItems;
-
-            int pinnedCount = pinnedItems.Count;
-            int historyCount = clipboardItems.Count;
-            int recentCount = Math.Min(20, historyCount);
+            int pinnedCount = _clipboardStateService.PinnedItems.Count;
+            int recentCount = Math.Min(20, _clipboardStateService.ClipboardItems.Count);
+            int historyCount = _clipboardStateService.ClipboardItems.Count;
 
             PinnedTabLabel.Text = $"Pinned ({pinnedCount})";
             RecentTabLabel.Text = $"Recent ({recentCount})";
@@ -1464,7 +1394,7 @@ namespace ClipPocketWin
                 }
 
                 byte[] payloadToWrite = dibPayload;
-                if (ClipboardBitmapConverter.TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
+                if (TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
                 {
                     payloadToWrite = bmpBytes;
                 }
@@ -1476,6 +1406,137 @@ namespace ClipPocketWin
             {
                 return null;
             }
+        }
+
+        private static class CacheDirectoryPolicy
+        {
+            private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(12);
+            private static readonly Dictionary<string, DateTimeOffset> LastCleanupUtcByDirectory = new(StringComparer.OrdinalIgnoreCase);
+            private static readonly object SyncRoot = new();
+
+            public static void EnsureDirectoryAndApplyPolicy(string directoryPath, int maxFileCount, long maxTotalBytes)
+            {
+                Directory.CreateDirectory(directoryPath);
+                if (!TryBeginCleanup(directoryPath))
+                {
+                    return;
+                }
+
+                try
+                {
+                    CleanupDirectory(directoryPath, maxFileCount, maxTotalBytes);
+                }
+                catch
+                {
+                }
+            }
+
+            public static void TouchFile(string filePath)
+            {
+                try
+                {
+                    File.SetLastWriteTimeUtc(filePath, DateTime.UtcNow);
+                }
+                catch
+                {
+                }
+            }
+
+            private static bool TryBeginCleanup(string directoryPath)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                lock (SyncRoot)
+                {
+                    if (LastCleanupUtcByDirectory.TryGetValue(directoryPath, out DateTimeOffset lastRun)
+                        && (now - lastRun) < CleanupInterval)
+                    {
+                        return false;
+                    }
+
+                    LastCleanupUtcByDirectory[directoryPath] = now;
+                    return true;
+                }
+            }
+
+            private static void CleanupDirectory(string directoryPath, int maxFileCount, long maxTotalBytes)
+            {
+                DirectoryInfo directory = new(directoryPath);
+                FileInfo[] files = directory.GetFiles();
+                if (files.Length == 0)
+                {
+                    return;
+                }
+
+                Array.Sort(files, static (left, right) => right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
+
+                int keptFiles = 0;
+                long keptBytes = 0;
+                foreach (FileInfo file in files)
+                {
+                    long fileLength = Math.Max(0L, file.Length);
+                    bool keepWithinCount = keptFiles < maxFileCount;
+                    bool keepWithinSize = (keptBytes + fileLength) <= maxTotalBytes || keptFiles == 0;
+                    if (keepWithinCount && keepWithinSize)
+                    {
+                        keptFiles++;
+                        keptBytes += fileLength;
+                        continue;
+                    }
+
+                    try
+                    {
+                        file.Delete();
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
+        private static bool TryBuildBitmapFromDib(byte[] dibPayload, out byte[]? bmpBytes)
+        {
+            bmpBytes = null;
+            if (dibPayload.Length < 40)
+            {
+                return false;
+            }
+
+            int headerSize = BitConverter.ToInt32(dibPayload, 0);
+            if (headerSize < 40 || headerSize > dibPayload.Length)
+            {
+                return false;
+            }
+
+            short bitsPerPixel = BitConverter.ToInt16(dibPayload, 14);
+            int compression = BitConverter.ToInt32(dibPayload, 16);
+            int colorsUsed = BitConverter.ToInt32(dibPayload, 32);
+
+            int colorTableEntries = colorsUsed;
+            if (colorTableEntries == 0 && bitsPerPixel is > 0 and <= 8)
+            {
+                colorTableEntries = 1 << bitsPerPixel;
+            }
+
+            int maskBytes = (compression is 3 or 6) ? 12 : 0;
+            int colorTableBytes = colorTableEntries * 4;
+            int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
+            if (pixelDataOffset > int.MaxValue - dibPayload.Length)
+            {
+                return false;
+            }
+
+            int fileSize = 14 + dibPayload.Length;
+            byte[] fileHeader = new byte[14];
+            fileHeader[0] = (byte)'B';
+            fileHeader[1] = (byte)'M';
+            Array.Copy(BitConverter.GetBytes(fileSize), 0, fileHeader, 2, 4);
+            Array.Copy(BitConverter.GetBytes(pixelDataOffset), 0, fileHeader, 10, 4);
+
+            bmpBytes = new byte[fileSize];
+            Buffer.BlockCopy(fileHeader, 0, bmpBytes, 0, fileHeader.Length);
+            Buffer.BlockCopy(dibPayload, 0, bmpBytes, fileHeader.Length, dibPayload.Length);
+            return true;
         }
 
         private static string GetTypeLabel(ClipboardItemType type)
@@ -2385,7 +2446,7 @@ namespace ClipPocketWin
                     }
                     else
                     {
-                        if (ClipboardBitmapConverter.TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
+                        if (TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
                         {
                             File.WriteAllBytes(bmpPath, bmpBytes);
                         }
@@ -2401,6 +2462,51 @@ namespace ClipPocketWin
                 {
                     return null;
                 }
+            }
+
+            private static bool TryBuildBitmapFromDib(byte[] dibPayload, out byte[]? bmpBytes)
+            {
+                bmpBytes = null;
+                if (dibPayload.Length < 40)
+                {
+                    return false;
+                }
+
+                int headerSize = BitConverter.ToInt32(dibPayload, 0);
+                if (headerSize < 40 || headerSize > dibPayload.Length)
+                {
+                    return false;
+                }
+
+                short bitsPerPixel = BitConverter.ToInt16(dibPayload, 14);
+                int compression = BitConverter.ToInt32(dibPayload, 16);
+                int colorsUsed = BitConverter.ToInt32(dibPayload, 32);
+
+                int colorTableEntries = colorsUsed;
+                if (colorTableEntries == 0 && bitsPerPixel is > 0 and <= 8)
+                {
+                    colorTableEntries = 1 << bitsPerPixel;
+                }
+
+                int maskBytes = (compression is 3 or 6) ? 12 : 0;
+                int colorTableBytes = colorTableEntries * 4;
+                int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
+                if (pixelDataOffset > int.MaxValue - dibPayload.Length)
+                {
+                    return false;
+                }
+
+                int fileSize = 14 + dibPayload.Length;
+                byte[] fileHeader = new byte[14];
+                fileHeader[0] = (byte)'B';
+                fileHeader[1] = (byte)'M';
+                Array.Copy(BitConverter.GetBytes(fileSize), 0, fileHeader, 2, 4);
+                Array.Copy(BitConverter.GetBytes(pixelDataOffset), 0, fileHeader, 10, 4);
+
+                bmpBytes = new byte[fileSize];
+                Buffer.BlockCopy(fileHeader, 0, bmpBytes, 0, fileHeader.Length);
+                Buffer.BlockCopy(dibPayload, 0, bmpBytes, fileHeader.Length, dibPayload.Length);
+                return true;
             }
 
             private static string ComputeStableHash(byte[] payload)
