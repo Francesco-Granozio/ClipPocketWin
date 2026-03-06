@@ -20,6 +20,15 @@ public sealed record ClipboardItem
 
     public RichTextContent? RichTextContent { get; init; }
 
+    public bool CanEditText => Type is ClipboardItemType.Text
+        or ClipboardItemType.Code
+        or ClipboardItemType.Url
+        or ClipboardItemType.Email
+        or ClipboardItemType.Phone
+        or ClipboardItemType.Json
+        or ClipboardItemType.Color
+        or ClipboardItemType.RichText;
+
     public string DisplayString => Type switch
     {
         ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
@@ -46,6 +55,33 @@ public sealed record ClipboardItem
             ClipboardItemType.RichText => string.Equals(RichTextContent?.PlainText, other.RichTextContent?.PlainText, StringComparison.Ordinal),
             _ => false
         };
+    }
+
+    public string? ResolveTextPayload()
+    {
+        return Type switch
+        {
+            ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
+                => TextContent,
+            ClipboardItemType.RichText
+                => RichTextContent?.PlainText ?? TextContent,
+            ClipboardItemType.File
+                => FilePath ?? TextContent,
+            _
+                => null
+        };
+    }
+
+    public string? ResolveEditableTextPayload()
+    {
+        if (!CanEditText)
+        {
+            return null;
+        }
+
+        return Type == ClipboardItemType.RichText
+            ? RichTextContent?.PlainText ?? TextContent ?? string.Empty
+            : TextContent ?? string.Empty;
     }
 
     private static bool BinaryEquals(byte[]? left, byte[]? right)

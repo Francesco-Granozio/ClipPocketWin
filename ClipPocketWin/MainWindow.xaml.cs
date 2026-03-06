@@ -1,6 +1,7 @@
 using ClipPocketWin.Application.Abstractions;
 using ClipPocketWin.Domain.Models;
 using ClipPocketWin.Runtime;
+using ClipPocketWin.Shared.Imaging;
 using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -47,15 +48,7 @@ namespace ClipPocketWin
         private const double LuminanceRiseSmoothing = 0.72;
         private const double ReliableLuminanceDecaySmoothing = 0.20;
         private const double UnreliableLuminanceDecaySmoothing = 0.05;
-        private const int SamplingGridRows = 5;
-        private const int SamplingGridCols = 5;
-        private const int ChunkSubSamplesPerAxis = 3;
-        private const double ChunkTrimFraction = 0.05;
-        private const double ChunkUpperPercentile = 0.80;
-        private const double ChunkUpperPercentileWeight = 0.60;
         private const int MinimumReliableUnderWindowSamples = 45;
-        private const int VkLButton = 0x01;
-        private const short KeyPressedMask = unchecked((short)0x8000);
         private const double ProtectionCurveGamma = 0.72;
         private const double PostMoveReadabilityDelaySeconds = 0.45;
         private const double PostShowReadabilityDelaySeconds = 0.90;
@@ -64,10 +57,6 @@ namespace ClipPocketWin
         private const double BackdropFallbackWarningIntervalSeconds = 6.0;
         private const double CardHoverScale = 1.03;
         private const double CardHoverAnimationDurationMs = 120;
-        private const int OuterRingSampleSegments = 8;
-        private const int OuterRingSampleInsetPixels = 2;
-        private const uint GwHwndNext = 2;
-        private const uint InvalidColorRef = 0xFFFFFFFF;
         private static readonly Windows.UI.Color BaseTintColor = Windows.UI.Color.FromArgb(255, 15, 20, 50);
         private static readonly Windows.UI.Color StrongProtectionTintColor = Windows.UI.Color.FromArgb(255, 1, 4, 12);
 
@@ -82,43 +71,7 @@ namespace ClipPocketWin
         private string _searchText = string.Empty;
         private ClipboardSection _selectedSection = ClipboardSection.History;
         private ClipboardItemType? _selectedTypeFilter;
-        private DesktopAcrylicController? _acrylicController;
-        private DispatcherQueueTimer? _delayedReadabilityTimer;
-        private DispatcherQueueTimer? _continuousReadabilityTimer;
         private DispatcherQueueTimer? _relativeTimeTimer;
-        private double _smoothedBackdropLuminance = LuminanceFallbackValue;
-        private bool _hasBackdropSample;
-        private bool _isBackdropSampling;
-        private BackdropSampleSource _lastLoggedSampleSource = BackdropSampleSource.None;
-        private DateTimeOffset _lastBackdropDiagnosticLogUtc = DateTimeOffset.MinValue;
-        private DateTimeOffset _lastBackdropFallbackWarningUtc = DateTimeOffset.MinValue;
-
-        private enum BackdropSampleSource
-        {
-            None,
-            UnderWindow,
-            OuterRing,
-            Fallback
-        }
-
-        private readonly record struct BackdropSamplingDiagnostics(
-            BackdropSampleSource Source,
-            int ValidSamples,
-            int CandidateWindowCount,
-            int TouchedWindowCount);
-
-        private readonly struct WindowSamplingCandidate
-        {
-            public WindowSamplingCandidate(nint handle, NativeRect bounds)
-            {
-                Handle = handle;
-                Bounds = bounds;
-            }
-
-            public nint Handle { get; }
-
-            public NativeRect Bounds { get; }
-        }
 
         public MainWindow()
         {
@@ -204,37 +157,9 @@ namespace ClipPocketWin
             Closed += Window_Closed;
         }
 
-
-        private void ContinuousReadabilityTimer_Tick(DispatcherQueueTimer sender, object args)
-        {
-            if (!IsWindowVisibleForSampling())
-            {
-                sender.Stop();
-                return;
-            }
-
-            _ = RefreshBackdropProtectionAsync();
-        }
-
         private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
         {
             _adaptiveBackdropController?.HandleAppWindowChanged(args);
-        }
-
-        private bool IsWindowVisibleForSampling()
-        {
-            if (_acrylicController == null)
-            {
-                return false;
-            }
-
-            IntPtr hWnd = WindowNative.GetWindowHandle(this);
-            if (hWnd == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            return IsWindowVisible(hWnd);
         }
 
         private void StartRelativeTimeUpdates()
@@ -276,111 +201,6 @@ namespace ClipPocketWin
             }
         }
 
-        private async void ClipboardCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-        {
-            if (sender is not Border { Tag: Guid itemId })
-            {
-                return;
-            }
-
-#if DEBUG
-            _logger?.LogInformation("Double-click selection started for item {ItemId}.", itemId);
-#endif
-            await PasteAndHideAsync(itemId);
-        }
-
-        private void CodePreview_Loaded(object sender, RoutedEventArgs e)
-        {
-            if (sender is not RichTextBlock richTextBlock)
-            {
-                return;
-            }
-
-            RenderCodePreview(richTextBlock, richTextBlock.DataContext as ClipboardCardViewModel);
-        }
-
-        private void CodePreview_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
-        {
-            if (sender is not RichTextBlock richTextBlock)
-            {
-                return;
-            }
-
-            RenderCodePreview(richTextBlock, args.NewValue as ClipboardCardViewModel);
-        }
-
-        private static void RenderCodePreview(RichTextBlock richTextBlock, ClipboardCardViewModel? card)
-        {
-            richTextBlock.Blocks.Clear();
-            Paragraph paragraph = CodeSyntaxHighlighter.BuildParagraph(card?.CodeText);
-            richTextBlock.Blocks.Add(paragraph);
-        }
-
-        private async void ClipboardCard_DragStarting(UIElement sender, DragStartingEventArgs args)
-        {
-            if (sender is not FrameworkElement { Tag: Guid itemId })
-            {
-                return;
-            }
-
-            ClipboardItem? item = ResolveClipboardItem(itemId);
-            if (item is null)
-            {
-#if DEBUG
-                _logger?.LogWarning("Drag started but item {ItemId} not found in state.", itemId);
-#endif
-                return;
-            }
-
-#if DEBUG
-            _logger?.LogInformation("Drag started for item {ItemId}, Type={Type}, FilePath={FilePath}", itemId, item.Type, item.FilePath);
-#endif
-
-            args.Data.RequestedOperation = DataPackageOperation.Copy;
-            string? textPayload = ResolveTextPayload(item);
-
-            switch (item.Type)
-            {
-                case ClipboardItemType.File:
-                    {
-                        if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
-                        {
-#if DEBUG
-                            _logger?.LogInformation("Drag file resolved: {FilePath}, exists=true", item.FilePath);
-#endif
-                            StorageFile storageFile = await StorageFile.GetFileFromPathAsync(item.FilePath);
-                            args.Data.SetStorageItems([storageFile]);
-                            return;
-                        }
-
-#if DEBUG
-                        _logger?.LogWarning("Drag file path missing or not found: {FilePath}", item.FilePath);
-#endif
-                        break;
-                    }
-                case ClipboardItemType.Image:
-                    {
-                        if (item.BinaryContent is { Length: > 0 } binaryContent)
-                        {
-                            string? dragImagePath = BuildDragImagePath(binaryContent);
-                            if (!string.IsNullOrWhiteSpace(dragImagePath) && File.Exists(dragImagePath))
-                            {
-                                StorageFile storageFile = await StorageFile.GetFileFromPathAsync(dragImagePath);
-                                args.Data.SetStorageItems([storageFile]);
-                                return;
-                            }
-                        }
-
-                        break;
-                    }
-            }
-
-            if (!string.IsNullOrWhiteSpace(textPayload))
-            {
-                args.Data.SetText(textPayload);
-            }
-        }
-
         private void ClipboardStateService_StateChanged(object? sender, EventArgs e)
         {
             if (DispatcherQueue.HasThreadAccess)
@@ -399,14 +219,12 @@ namespace ClipPocketWin
 
         private void RefreshClipboardCards()
         {
-            int unfilteredSectionCount = GetSectionItems(_selectedSection).Count;
-            List<ClipboardCardViewModel> nextCards = BuildFilteredCards();
-
             const int maxCards = 80;
-            if (nextCards.Count > maxCards)
-            {
-                nextCards = nextCards.Take(maxCards).ToList();
-            }
+            IReadOnlyList<ClipboardItem> historyItems = _clipboardStateService.ClipboardItems;
+            IReadOnlyList<PinnedClipboardItem> pinnedItems = _clipboardStateService.PinnedItems;
+
+            int unfilteredSectionCount = GetSectionItemCount(_selectedSection, historyItems, pinnedItems);
+            List<ClipboardCardViewModel> nextCards = BuildFilteredCards(historyItems, pinnedItems, maxCards);
 
             _clipboardCards.Clear();
             foreach (ClipboardCardViewModel card in nextCards)
@@ -423,13 +241,16 @@ namespace ClipPocketWin
             }
         }
 
-        private List<ClipboardItem> GetSectionItems(ClipboardSection section)
+        private static int GetSectionItemCount(
+            ClipboardSection section,
+            IReadOnlyList<ClipboardItem> historyItems,
+            IReadOnlyList<PinnedClipboardItem> pinnedItems)
         {
             return section switch
             {
-                ClipboardSection.Pinned => _clipboardStateService.PinnedItems.Select(x => x.OriginalItem).ToList(),
-                ClipboardSection.History => _clipboardStateService.ClipboardItems.ToList(),
-                _ => _clipboardStateService.ClipboardItems.Take(20).ToList()
+                ClipboardSection.Pinned => pinnedItems.Count,
+                ClipboardSection.History => historyItems.Count,
+                _ => Math.Min(20, historyItems.Count)
             };
         }
 
@@ -463,32 +284,49 @@ namespace ClipPocketWin
             }
         }
 
-        private List<ClipboardCardViewModel> BuildFilteredCards()
+        private List<ClipboardCardViewModel> BuildFilteredCards(
+            IReadOnlyList<ClipboardItem> historyItems,
+            IReadOnlyList<PinnedClipboardItem> pinnedItems,
+            int maxCards)
         {
-            IEnumerable<ClipboardItem> sourceItems = _selectedSection switch
+            HashSet<Guid> pinnedIds = [];
+            for (int i = 0; i < pinnedItems.Count; i++)
             {
-                ClipboardSection.Pinned => _clipboardStateService.PinnedItems.Select(x => x.OriginalItem),
-                ClipboardSection.History => _clipboardStateService.ClipboardItems,
-                _ => _clipboardStateService.ClipboardItems.Take(20)
+                _ = pinnedIds.Add(pinnedItems[i].OriginalItem.Id);
+            }
+
+            int sourceCount = _selectedSection switch
+            {
+                ClipboardSection.Pinned => pinnedItems.Count,
+                ClipboardSection.History => historyItems.Count,
+                _ => Math.Min(20, historyItems.Count)
             };
 
-            if (_selectedTypeFilter is ClipboardItemType selectedType)
+            List<ClipboardCardViewModel> cards = new(sourceCount);
+            for (int i = 0; i < sourceCount; i++)
             {
-                sourceItems = sourceItems.Where(item => item.Type == selectedType);
+                ClipboardItem item = _selectedSection == ClipboardSection.Pinned
+                    ? pinnedItems[i].OriginalItem
+                    : historyItems[i];
+
+                if (_selectedTypeFilter is ClipboardItemType selectedType && item.Type != selectedType)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_searchText) && !IsFuzzyMatch(_searchText, item.DisplayString))
+                {
+                    continue;
+                }
+
+                cards.Add(CreateCardViewModel(item, pinnedIds.Contains(item.Id)));
+                if (cards.Count >= maxCards)
+                {
+                    break;
+                }
             }
 
-            if (!string.IsNullOrWhiteSpace(_searchText))
-            {
-                sourceItems = sourceItems.Where(item => IsFuzzyMatch(_searchText, item.DisplayString));
-            }
-
-            HashSet<Guid> pinnedIds = _clipboardStateService.PinnedItems
-                .Select(x => x.OriginalItem.Id)
-                .ToHashSet();
-
-            return sourceItems
-                .Select(item => CreateCardViewModel(item, pinnedIds.Contains(item.Id)))
-                .ToList();
+            return cards;
         }
 
         private static bool IsFuzzyMatch(string query, string text)
@@ -706,271 +544,6 @@ namespace ClipPocketWin
 
             UpdateTypeFilterButtons();
             RefreshClipboardCards();
-        }
-
-        private async void ClipboardCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
-        {
-            if (sender is not FrameworkElement { Tag: Guid itemId })
-            {
-                return;
-            }
-
-            ClipboardItem? item = ResolveClipboardItem(itemId);
-            if (item is null)
-            {
-                return;
-            }
-
-            MenuFlyout flyout = BuildCardFlyout(item);
-            flyout.ShowAt((FrameworkElement)sender);
-        }
-
-        private MenuFlyout BuildCardFlyout(ClipboardItem item)
-        {
-            MenuFlyout flyout = new();
-
-            MenuFlyoutItem copyItem = new() { Text = "Copy" };
-            copyItem.Click += async (_, _) => await CopyOnlyAsync(item.Id);
-            flyout.Items.Add(copyItem);
-
-            if (CanUseEditQuickAction(item.Type))
-            {
-                MenuFlyoutItem editItem = new() { Text = "Edit" };
-                editItem.Click += (_, _) => OpenEditTextWindow(item);
-                flyout.Items.Add(editItem);
-            }
-
-            MenuFlyoutSubItem quickActionsMenu = new() { Text = "Quick Actions" };
-
-            MenuFlyoutItem saveToFileItem = new() { Text = "Save to File" };
-            saveToFileItem.Click += async (_, _) => await SaveToFileAsync(item);
-            quickActionsMenu.Items.Add(saveToFileItem);
-
-            MenuFlyoutItem copyBase64Item = new() { Text = "Copy as Base64" };
-            copyBase64Item.Click += async (_, _) => await CopyAsBase64Async(item);
-            quickActionsMenu.Items.Add(copyBase64Item);
-
-            MenuFlyoutItem urlEncodeItem = new() { Text = "URL Encode" };
-            urlEncodeItem.Click += async (_, _) => await UrlEncodeAsync(item);
-            quickActionsMenu.Items.Add(urlEncodeItem);
-
-            MenuFlyoutItem urlDecodeItem = new() { Text = "URL Decode" };
-            urlDecodeItem.Click += async (_, _) => await UrlDecodeAsync(item);
-            quickActionsMenu.Items.Add(urlDecodeItem);
-
-            flyout.Items.Add(quickActionsMenu);
-
-            bool isPinned = _clipboardStateService.PinnedItems.Any(x => x.OriginalItem.Id == item.Id);
-            MenuFlyoutItem pinToggleItem = new() { Text = isPinned ? "Unpin" : "Pin" };
-            pinToggleItem.Click += async (_, _) => await TogglePinAsync(item);
-            flyout.Items.Add(pinToggleItem);
-
-            MenuFlyoutItem deleteItem = new() { Text = "Delete" };
-            deleteItem.Click += async (_, _) => await DeleteClipboardItemAsync(item.Id);
-            flyout.Items.Add(deleteItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            MenuFlyoutItem clearHistoryItem = new() { Text = "Clear History" };
-            clearHistoryItem.Click += async (_, _) => await ClearHistoryAsync();
-            flyout.Items.Add(clearHistoryItem);
-
-            return flyout;
-        }
-
-        private ClipboardItem? ResolveClipboardItem(Guid id)
-        {
-            return _clipboardStateService.ClipboardItems.FirstOrDefault(x => x.Id == id)
-                ?? _clipboardStateService.PinnedItems.Select(x => x.OriginalItem).FirstOrDefault(x => x.Id == id);
-        }
-
-        private async Task CopyOnlyAsync(Guid itemId)
-        {
-            Result copyResult = await _clipboardStateService.CopyClipboardItemAsync(itemId);
-            if (copyResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(
-                    copyResult.Error?.Exception,
-                    "Clipboard copy failed for item {ItemId}. Code {ErrorCode}: {Message}",
-                    itemId,
-                    copyResult.Error?.Code,
-                    copyResult.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task PasteAndHideAsync(Guid itemId)
-        {
-            Result hideResult = await _windowPanelService.HideAsync();
-#if DEBUG
-            _logger?.LogInformation("Double-click hide requested for item {ItemId}. Success={Success}", itemId, hideResult.IsSuccess);
-#endif
-            if (hideResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(
-                    hideResult.Error?.Exception,
-                    "Failed to hide panel before clipboard paste. Item {ItemId}. Code {ErrorCode}: {Message}",
-                    itemId,
-                    hideResult.Error?.Code,
-                    hideResult.Error?.Message);
-#endif
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(60));
-
-#if DEBUG
-            _logger?.LogInformation("Double-click paste requested for item {ItemId}.", itemId);
-#endif
-            Result pasteResult = await _clipboardStateService.PasteClipboardItemAsync(itemId);
-            if (pasteResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(
-                    pasteResult.Error?.Exception,
-                    "Clipboard paste failed for item {ItemId}. Code {ErrorCode}: {Message}",
-                    itemId,
-                    pasteResult.Error?.Code,
-                    pasteResult.Error?.Message);
-#endif
-                return;
-            }
-
-#if DEBUG
-            _logger?.LogInformation("Double-click paste completed for item {ItemId}.", itemId);
-#endif
-        }
-
-        private async Task SaveToFileAsync(ClipboardItem item)
-        {
-            nint windowHandle = WindowNative.GetWindowHandle(this);
-            Result result = await _quickActionsService.SaveToFileAsync(item, windowHandle);
-            if (result.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(result.Error?.Exception, "Quick action Save to file failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
-#endif
-            }
-        }
-
-        private void OpenEditTextWindow(ClipboardItem item)
-        {
-            string? initialText = ResolveEditableTextPayload(item);
-            if (initialText is null)
-            {
-#if DEBUG
-                _logger?.LogWarning("Quick action Edit is not available for clipboard item type {ItemType}.", item.Type);
-#endif
-                return;
-            }
-
-            EditTextWindow editWindow = new(initialText);
-            editWindow.TextCommitted += async (_, args) => await ApplyEditedTextAsync(item, args.EditedText);
-            editWindow.Activate();
-        }
-
-        private async Task ApplyEditedTextAsync(ClipboardItem sourceItem, string editedText)
-        {
-            Result result = await _quickActionsService.EditTextAsync(sourceItem, editedText);
-            if (result.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(result.Error?.Exception, "Quick action Edit failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task CopyAsBase64Async(ClipboardItem item)
-        {
-            Result result = await _quickActionsService.CopyAsBase64Async(item);
-            if (result.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(result.Error?.Exception, "Quick action Copy as Base64 failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task UrlEncodeAsync(ClipboardItem item)
-        {
-            Result result = await _quickActionsService.UrlEncodeAsync(item);
-            if (result.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(result.Error?.Exception, "Quick action URL Encode failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task UrlDecodeAsync(ClipboardItem item)
-        {
-            Result result = await _quickActionsService.UrlDecodeAsync(item);
-            if (result.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(result.Error?.Exception, "Quick action URL Decode failed. Code {ErrorCode}: {Message}", result.Error?.Code, result.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task TogglePinAsync(ClipboardItem item)
-        {
-            Result toggleResult = await _clipboardStateService.TogglePinAsync(item);
-            if (toggleResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(toggleResult.Error?.Exception, "Failed to toggle pin. Code {ErrorCode}: {Message}", toggleResult.Error?.Code, toggleResult.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task DeleteClipboardItemAsync(Guid itemId)
-        {
-            Result deleteResult = await _clipboardStateService.DeleteClipboardItemAsync(itemId);
-            if (deleteResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(deleteResult.Error?.Exception, "Failed to delete clipboard item. Code {ErrorCode}: {Message}", deleteResult.Error?.Code, deleteResult.Error?.Message);
-#endif
-            }
-        }
-
-        private async Task ClearHistoryAsync()
-        {
-            ContentDialog dialog = new()
-            {
-                XamlRoot = ResolveXamlRoot(),
-                Title = "Clear Clipboard History",
-                Content = "Are you sure you want to clear all clipboard history? This action cannot be undone.",
-                PrimaryButtonText = "Clear All",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close
-            };
-
-            ContentDialogResult dialogResult = await dialog.ShowAsync();
-            if (dialogResult != ContentDialogResult.Primary)
-            {
-                return;
-            }
-
-            Result clearResult = await _clipboardStateService.ClearClipboardHistoryAsync();
-            if (clearResult.IsFailure)
-            {
-#if DEBUG
-                _logger?.LogWarning(clearResult.Error?.Exception, "Failed to clear clipboard history. Code {ErrorCode}: {Message}", clearResult.Error?.Code, clearResult.Error?.Message);
-#endif
-            }
-        }
-
-        private XamlRoot ResolveXamlRoot()
-        {
-            if (Content is FrameworkElement rootElement && rootElement.XamlRoot is not null)
-            {
-                return rootElement.XamlRoot;
-            }
-
-            throw new InvalidOperationException("Main window content does not expose a XamlRoot.");
         }
 
         private static ClipboardCardViewModel CreateCardViewModel(ClipboardItem item, bool isPinned)
@@ -1330,47 +903,6 @@ namespace ClipPocketWin
             return $"{value:0.#} {units[unitIndex]}";
         }
 
-        private static string? ResolveTextPayload(ClipboardItem item)
-        {
-            return item.Type switch
-            {
-                ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
-                    => item.TextContent,
-                ClipboardItemType.RichText
-                    => item.RichTextContent?.PlainText ?? item.TextContent,
-                ClipboardItemType.File
-                    => item.FilePath ?? item.TextContent,
-                _
-                    => null
-            };
-        }
-
-        private static bool CanUseEditQuickAction(ClipboardItemType type)
-        {
-            return type is ClipboardItemType.Text
-                or ClipboardItemType.Code
-                or ClipboardItemType.Url
-                or ClipboardItemType.Email
-                or ClipboardItemType.Phone
-                or ClipboardItemType.Json
-                or ClipboardItemType.Color
-                or ClipboardItemType.RichText;
-        }
-
-        private static string? ResolveEditableTextPayload(ClipboardItem item)
-        {
-            if (!CanUseEditQuickAction(item.Type))
-            {
-                return null;
-            }
-
-            return item.Type switch
-            {
-                ClipboardItemType.RichText => item.RichTextContent?.PlainText ?? item.TextContent ?? string.Empty,
-                _ => item.TextContent ?? string.Empty
-            };
-        }
-
         private static string? BuildDragImagePath(byte[] dibPayload)
         {
             try
@@ -1394,7 +926,7 @@ namespace ClipPocketWin
                 }
 
                 byte[] payloadToWrite = dibPayload;
-                if (TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
+                if (DibBitmapConverter.TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
                 {
                     payloadToWrite = bmpBytes;
                 }
@@ -1494,51 +1026,6 @@ namespace ClipPocketWin
             }
         }
 
-        private static bool TryBuildBitmapFromDib(byte[] dibPayload, out byte[]? bmpBytes)
-        {
-            bmpBytes = null;
-            if (dibPayload.Length < 40)
-            {
-                return false;
-            }
-
-            int headerSize = BitConverter.ToInt32(dibPayload, 0);
-            if (headerSize < 40 || headerSize > dibPayload.Length)
-            {
-                return false;
-            }
-
-            short bitsPerPixel = BitConverter.ToInt16(dibPayload, 14);
-            int compression = BitConverter.ToInt32(dibPayload, 16);
-            int colorsUsed = BitConverter.ToInt32(dibPayload, 32);
-
-            int colorTableEntries = colorsUsed;
-            if (colorTableEntries == 0 && bitsPerPixel is > 0 and <= 8)
-            {
-                colorTableEntries = 1 << bitsPerPixel;
-            }
-
-            int maskBytes = (compression is 3 or 6) ? 12 : 0;
-            int colorTableBytes = colorTableEntries * 4;
-            int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
-            if (pixelDataOffset > int.MaxValue - dibPayload.Length)
-            {
-                return false;
-            }
-
-            int fileSize = 14 + dibPayload.Length;
-            byte[] fileHeader = new byte[14];
-            fileHeader[0] = (byte)'B';
-            fileHeader[1] = (byte)'M';
-            Array.Copy(BitConverter.GetBytes(fileSize), 0, fileHeader, 2, 4);
-            Array.Copy(BitConverter.GetBytes(pixelDataOffset), 0, fileHeader, 10, 4);
-
-            bmpBytes = new byte[fileSize];
-            Buffer.BlockCopy(fileHeader, 0, bmpBytes, 0, fileHeader.Length);
-            Buffer.BlockCopy(dibPayload, 0, bmpBytes, fileHeader.Length, dibPayload.Length);
-            return true;
-        }
-
         private static string GetTypeLabel(ClipboardItemType type)
         {
             return type switch
@@ -1632,522 +1119,6 @@ namespace ClipPocketWin
             History
         }
 
-        private async Task RefreshBackdropProtectionAsync()
-        {
-            if (_acrylicController == null || _isBackdropSampling || !IsWindowVisibleForSampling())
-            {
-                return;
-            }
-
-            IntPtr windowHandle = WindowNative.GetWindowHandle(this);
-            if (windowHandle == IntPtr.Zero)
-            {
-                return;
-            }
-
-            int left = m_AppWindow.Position.X;
-            int top = m_AppWindow.Position.Y;
-            int width = m_AppWindow.Size.Width;
-            int height = m_AppWindow.Size.Height;
-
-            double measuredLuminance;
-            BackdropSamplingDiagnostics diagnostics;
-            if (width <= 0 || height <= 0)
-            {
-                measuredLuminance = LuminanceFallbackValue;
-                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0);
-            }
-            else
-            {
-                _isBackdropSampling = true;
-                try
-                {
-                    (measuredLuminance, diagnostics) = await Task.Run(() =>
-                    {
-                        if (TryMeasureBackdropLuminance(windowHandle, left, top, width, height, out double sampledLuminance, out BackdropSamplingDiagnostics sampledDiagnostics))
-                        {
-                            return (sampledLuminance, sampledDiagnostics);
-                        }
-
-                        return (LuminanceFallbackValue, new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0));
-                    });
-                }
-                finally
-                {
-                    _isBackdropSampling = false;
-                }
-            }
-
-            if (_acrylicController == null)
-            {
-                return;
-            }
-
-            if (!_hasBackdropSample)
-            {
-                _smoothedBackdropLuminance = measuredLuminance;
-                _hasBackdropSample = true;
-            }
-            else
-            {
-                double stabilizedMeasuredLuminance = StabilizeMeasuredLuminance(measuredLuminance, _smoothedBackdropLuminance, diagnostics);
-                double smoothing = ResolveLuminanceSmoothing(_smoothedBackdropLuminance, stabilizedMeasuredLuminance, diagnostics);
-                _smoothedBackdropLuminance = Lerp(_smoothedBackdropLuminance, stabilizedMeasuredLuminance, smoothing);
-                measuredLuminance = stabilizedMeasuredLuminance;
-            }
-
-            ApplyBackdropReadability(_smoothedBackdropLuminance);
-            LogBackdropSamplingDiagnostics(diagnostics, measuredLuminance, _smoothedBackdropLuminance);
-        }
-
-        private static double StabilizeMeasuredLuminance(double measuredLuminance, double currentSmoothedLuminance, BackdropSamplingDiagnostics diagnostics)
-        {
-            if (measuredLuminance >= currentSmoothedLuminance)
-            {
-                return measuredLuminance;
-            }
-
-            bool reliableUnderWindowSample = IsReliableUnderWindowSample(diagnostics);
-            bool isMouseButtonDown = (GetAsyncKeyState(VkLButton) & KeyPressedMask) != 0;
-            if (!reliableUnderWindowSample)
-            {
-                return currentSmoothedLuminance;
-            }
-
-            if (isMouseButtonDown)
-            {
-                const double maxDropWhileDragging = 0.05;
-                return Math.Max(measuredLuminance, currentSmoothedLuminance - maxDropWhileDragging);
-            }
-
-            return measuredLuminance;
-        }
-
-        private static double ResolveLuminanceSmoothing(double currentSmoothedLuminance, double targetLuminance, BackdropSamplingDiagnostics diagnostics)
-        {
-            if (targetLuminance >= currentSmoothedLuminance)
-            {
-                return LuminanceRiseSmoothing;
-            }
-
-            return IsReliableUnderWindowSample(diagnostics)
-                ? ReliableLuminanceDecaySmoothing
-                : UnreliableLuminanceDecaySmoothing;
-        }
-
-        private static bool IsReliableUnderWindowSample(BackdropSamplingDiagnostics diagnostics)
-        {
-            return diagnostics.Source == BackdropSampleSource.UnderWindow
-                && diagnostics.ValidSamples >= MinimumReliableUnderWindowSamples
-                && diagnostics.TouchedWindowCount > 0;
-        }
-
-        private void LogBackdropSamplingDiagnostics(BackdropSamplingDiagnostics diagnostics, double measuredLuminance, double smoothedLuminance)
-        {
-#if DEBUG
-            if (_logger == null)
-            {
-                return;
-            }
-
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            bool sourceChanged = diagnostics.Source != _lastLoggedSampleSource;
-            bool intervalElapsed = (now - _lastBackdropDiagnosticLogUtc).TotalSeconds >= BackdropDiagnosticLogIntervalSeconds;
-            if (sourceChanged || intervalElapsed)
-            {
-                _logger.LogDebug(
-                    "Backdrop sample source={Source}, effectiveMeasured={MeasuredLuminance:F3}, smoothed={SmoothedLuminance:F3}, validSamples={ValidSamples}, candidateWindows={CandidateWindows}, touchedWindows={TouchedWindows}, reliableUnderWindow={ReliableUnderWindow}",
-                    diagnostics.Source,
-                    measuredLuminance,
-                    smoothedLuminance,
-                    diagnostics.ValidSamples,
-                    diagnostics.CandidateWindowCount,
-                    diagnostics.TouchedWindowCount,
-                    IsReliableUnderWindowSample(diagnostics));
-
-                _lastBackdropDiagnosticLogUtc = now;
-                _lastLoggedSampleSource = diagnostics.Source;
-            }
-
-            if (diagnostics.Source == BackdropSampleSource.Fallback
-                && (now - _lastBackdropFallbackWarningUtc).TotalSeconds >= BackdropFallbackWarningIntervalSeconds)
-            {
-                _logger.LogWarning(
-                    "Backdrop under-window sampling unavailable. Using fallback luminance. ValidSamples={ValidSamples}, CandidateWindows={CandidateWindows}",
-                    diagnostics.ValidSamples,
-                    diagnostics.CandidateWindowCount);
-                _lastBackdropFallbackWarningUtc = now;
-            }
-#endif
-        }
-
-        private void ApplyBackdropReadability(double luminance)
-        {
-            if (_acrylicController == null)
-            {
-                return;
-            }
-
-            double normalizedProtection = (luminance - LuminanceProtectionThreshold) / (1d - LuminanceProtectionThreshold);
-            normalizedProtection = Math.Clamp(normalizedProtection, 0d, 1d);
-            normalizedProtection = Math.Pow(normalizedProtection, ProtectionCurveGamma);
-            normalizedProtection = SmoothStep(normalizedProtection);
-
-            float protection = (float)normalizedProtection;
-            float contrastBoost = protection * MaxAdditionalContrastTint;
-
-            _acrylicController.TintColor = LerpColor(BaseTintColor, StrongProtectionTintColor, protection);
-            _acrylicController.TintOpacity = Math.Clamp(Lerp(MinTintOpacity, MaxTintOpacity, protection) + contrastBoost, 0f, 1f);
-            _acrylicController.LuminosityOpacity = Lerp(MinLuminosityOpacity, MaxLuminosityOpacity, protection);
-            _acrylicController.FallbackColor = Windows.UI.Color.FromArgb(
-                (byte)Lerp(190f, 255f, protection),
-                BaseTintColor.R,
-                BaseTintColor.G,
-                BaseTintColor.B);
-        }
-
-        private static bool TryMeasureBackdropLuminance(nint windowHandle, int left, int top, int width, int height, out double luminance, out BackdropSamplingDiagnostics diagnostics)
-        {
-            luminance = 0d;
-            diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0);
-
-            if (width <= 0 || height <= 0)
-            {
-                return false;
-            }
-
-            if (TryMeasureUnderWindowLuminance(windowHandle, left, top, width, height, out double underWindowLuminance, out int underWindowSamples, out int candidateWindowCount, out int touchedWindowCount))
-            {
-                luminance = underWindowLuminance;
-                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.UnderWindow, underWindowSamples, candidateWindowCount, touchedWindowCount);
-                return true;
-            }
-
-            if (TryMeasureOuterRingLuminance(left, top, width, height, out double outerRingLuminance, out int outerRingSamples))
-            {
-                luminance = outerRingLuminance;
-                diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.OuterRing, outerRingSamples, 0, 0);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryMeasureUnderWindowLuminance(
-            nint windowHandle,
-            int left,
-            int top,
-            int width,
-            int height,
-            out double luminance,
-            out int validSampleCount,
-            out int candidateWindowCount,
-            out int touchedWindowCount)
-        {
-            luminance = 0d;
-            validSampleCount = 0;
-            candidateWindowCount = 0;
-            touchedWindowCount = 0;
-
-            if (!TryBuildUnderWindowCandidates(windowHandle, out List<WindowSamplingCandidate> candidates))
-            {
-                return false;
-            }
-
-            candidateWindowCount = candidates.Count;
-            if (candidateWindowCount == 0)
-            {
-                return false;
-            }
-
-            Span<double> chunkLuminances = stackalloc double[SamplingGridRows * SamplingGridCols];
-            int validChunkCount = 0;
-
-            Dictionary<nint, IntPtr> windowDcs = new(candidates.Count);
-            HashSet<nint> touchedWindows = [];
-
-            try
-            {
-                for (int r = 0; r < SamplingGridRows; r++)
-                {
-                    for (int c = 0; c < SamplingGridCols; c++)
-                    {
-                        double chunkTotal = 0d;
-                        int chunkSampleCount = 0;
-
-                        for (int sy = 0; sy < ChunkSubSamplesPerAxis; sy++)
-                        {
-                            for (int sx = 0; sx < ChunkSubSamplesPerAxis; sx++)
-                            {
-                                double normalizedX = (c + ((sx + 0.5d) / ChunkSubSamplesPerAxis)) / SamplingGridCols;
-                                double normalizedY = (r + ((sy + 0.5d) / ChunkSubSamplesPerAxis)) / SamplingGridRows;
-
-                                int sampleX = left + (int)(width * normalizedX);
-                                int sampleY = top + (int)(height * normalizedY);
-
-                                if (!TrySampleLuminanceFromUnderlyingWindow(candidates, windowDcs, sampleX, sampleY, out double sampleLuminance, out nint sampledWindowHandle))
-                                {
-                                    continue;
-                                }
-
-                                chunkTotal += sampleLuminance;
-                                chunkSampleCount++;
-                                validSampleCount++;
-                                _ = touchedWindows.Add(sampledWindowHandle);
-                            }
-                        }
-
-                        if (chunkSampleCount == 0)
-                        {
-                            continue;
-                        }
-
-                        chunkLuminances[validChunkCount++] = chunkTotal / chunkSampleCount;
-                    }
-                }
-            }
-            finally
-            {
-                foreach (KeyValuePair<nint, IntPtr> pair in windowDcs)
-                {
-                    if (pair.Value != IntPtr.Zero)
-                    {
-                        _ = ReleaseDC(pair.Key, pair.Value);
-                    }
-                }
-            }
-
-            if (validChunkCount == 0)
-            {
-                return false;
-            }
-
-            luminance = ComputeRobustChunkLuminance(chunkLuminances[..validChunkCount]);
-            touchedWindowCount = touchedWindows.Count;
-            return true;
-        }
-
-        private static bool TryBuildUnderWindowCandidates(nint windowHandle, out List<WindowSamplingCandidate> candidates)
-        {
-            candidates = [];
-
-            if (!IsWindow(windowHandle))
-            {
-                return false;
-            }
-
-            nint current = GetWindow(windowHandle, GwHwndNext);
-            int safetyCounter = 0;
-
-            while (current != nint.Zero && safetyCounter < 1024)
-            {
-                safetyCounter++;
-
-                if (current != windowHandle
-                    && IsWindow(current)
-                    && IsWindowVisible(current)
-                    && !IsIconic(current)
-                    && GetWindowRect(current, out NativeRect bounds)
-                    && bounds.Right > bounds.Left
-                    && bounds.Bottom > bounds.Top)
-                {
-                    candidates.Add(new WindowSamplingCandidate(current, bounds));
-                }
-
-                current = GetWindow(current, GwHwndNext);
-            }
-
-            return candidates.Count > 0;
-        }
-
-        private static bool TrySampleLuminanceFromUnderlyingWindow(
-            List<WindowSamplingCandidate> candidates,
-            Dictionary<nint, IntPtr> windowDcs,
-            int screenX,
-            int screenY,
-            out double luminance,
-            out nint sampledWindowHandle)
-        {
-            luminance = 0d;
-            sampledWindowHandle = nint.Zero;
-
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                WindowSamplingCandidate candidate = candidates[i];
-                if (!IsPointInsideRect(candidate.Bounds, screenX, screenY))
-                {
-                    continue;
-                }
-
-                if (!windowDcs.TryGetValue(candidate.Handle, out IntPtr targetDc))
-                {
-                    targetDc = GetWindowDC(candidate.Handle);
-                    windowDcs[candidate.Handle] = targetDc;
-                }
-
-                if (targetDc == IntPtr.Zero)
-                {
-                    continue;
-                }
-
-                int localX = screenX - candidate.Bounds.Left;
-                int localY = screenY - candidate.Bounds.Top;
-                uint colorRef = GetPixel(targetDc, localX, localY);
-                if (colorRef == InvalidColorRef)
-                {
-                    continue;
-                }
-
-                sampledWindowHandle = candidate.Handle;
-                luminance = ColorRefToLuminance(colorRef);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryMeasureOuterRingLuminance(int left, int top, int width, int height, out double luminance, out int validSampleCount)
-        {
-            luminance = 0d;
-            validSampleCount = 0;
-
-            if (width <= 0 || height <= 0)
-            {
-                return false;
-            }
-
-            IntPtr desktopDc = GetDC(IntPtr.Zero);
-            if (desktopDc == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            try
-            {
-                Span<double> ringSamples = stackalloc double[OuterRingSampleSegments * 4];
-
-                for (int i = 0; i < OuterRingSampleSegments; i++)
-                {
-                    double normalized = (i + 0.5d) / OuterRingSampleSegments;
-                    int horizontalX = left + (int)(width * normalized);
-                    int verticalY = top + (int)(height * normalized);
-
-                    AddDesktopSample(desktopDc, horizontalX, top - OuterRingSampleInsetPixels, ringSamples, ref validSampleCount);
-                    AddDesktopSample(desktopDc, horizontalX, top + height + OuterRingSampleInsetPixels, ringSamples, ref validSampleCount);
-                    AddDesktopSample(desktopDc, left - OuterRingSampleInsetPixels, verticalY, ringSamples, ref validSampleCount);
-                    AddDesktopSample(desktopDc, left + width + OuterRingSampleInsetPixels, verticalY, ringSamples, ref validSampleCount);
-                }
-
-                if (validSampleCount == 0)
-                {
-                    return false;
-                }
-
-                luminance = ComputeRobustChunkLuminance(ringSamples[..validSampleCount]);
-                return true;
-            }
-            finally
-            {
-                _ = ReleaseDC(IntPtr.Zero, desktopDc);
-            }
-        }
-
-        private static void AddDesktopSample(IntPtr desktopDc, int x, int y, Span<double> ringSamples, ref int sampleCount)
-        {
-            if ((uint)sampleCount >= (uint)ringSamples.Length)
-            {
-                return;
-            }
-
-            uint colorRef = GetPixel(desktopDc, x, y);
-            if (colorRef == InvalidColorRef)
-            {
-                return;
-            }
-
-            ringSamples[sampleCount] = ColorRefToLuminance(colorRef);
-            sampleCount++;
-        }
-
-        private static bool IsPointInsideRect(NativeRect rect, int x, int y)
-        {
-            return x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom;
-        }
-
-        private struct NativeRect
-        {
-            public int Left;
-
-            public int Top;
-
-            public int Right;
-
-            public int Bottom;
-        }
-
-        private static double ComputeRobustChunkLuminance(ReadOnlySpan<double> chunkLuminances)
-        {
-            double[] sorted = chunkLuminances.ToArray();
-            Array.Sort(sorted);
-
-            int trimCount = (int)Math.Floor(sorted.Length * ChunkTrimFraction);
-            if (trimCount * 2 >= sorted.Length)
-            {
-                trimCount = 0;
-            }
-
-            double trimmedTotal = 0d;
-            int trimmedCount = 0;
-            for (int i = trimCount; i < sorted.Length - trimCount; i++)
-            {
-                trimmedTotal += sorted[i];
-                trimmedCount++;
-            }
-
-            double trimmedMean = trimmedCount > 0
-                ? trimmedTotal / trimmedCount
-                : sorted[sorted.Length / 2];
-
-            int upperPercentileIndex = (int)Math.Round((sorted.Length - 1) * ChunkUpperPercentile);
-            upperPercentileIndex = Math.Clamp(upperPercentileIndex, 0, sorted.Length - 1);
-            double upperPercentile = sorted[upperPercentileIndex];
-
-            return Math.Clamp(Lerp(trimmedMean, upperPercentile, ChunkUpperPercentileWeight), 0d, 1d);
-        }
-
-        private static double ColorRefToLuminance(uint colorRef)
-        {
-            byte r = (byte)(colorRef & 0x000000FF);
-            byte g = (byte)((colorRef & 0x0000FF00) >> 8);
-            byte b = (byte)((colorRef & 0x00FF0000) >> 16);
-
-            return ((0.2126d * r) + (0.7152d * g) + (0.0722d * b)) / 255d;
-        }
-
-        private static double SmoothStep(double value)
-        {
-            return value * value * (3d - (2d * value));
-        }
-
-        private static float Lerp(float start, float end, float amount)
-        {
-            return start + ((end - start) * amount);
-        }
-
-        private static double Lerp(double start, double end, double amount)
-        {
-            return start + ((end - start) * amount);
-        }
-
-        private static Windows.UI.Color LerpColor(Windows.UI.Color start, Windows.UI.Color end, float amount)
-        {
-            return Windows.UI.Color.FromArgb(
-                (byte)Lerp(start.A, end.A, amount),
-                (byte)Lerp(start.R, end.R, amount),
-                (byte)Lerp(start.G, end.G, amount),
-                (byte)Lerp(start.B, end.B, amount));
-        }
-
         private void Window_Activated(object sender, WindowActivatedEventArgs args)
         {
             _adaptiveBackdropController?.HandleWindowActivated(args);
@@ -2208,18 +1179,9 @@ namespace ClipPocketWin
         {
             _clipboardStateService.StateChanged -= ClipboardStateService_StateChanged;
             m_AppWindow.Changed -= AppWindow_Changed;
-            _delayedReadabilityTimer?.Stop();
-            if (_continuousReadabilityTimer != null)
-            {
-                _continuousReadabilityTimer.Tick -= ContinuousReadabilityTimer_Tick;
-                _continuousReadabilityTimer.Stop();
-                _continuousReadabilityTimer = null;
-            }
 
             StopRelativeTimeUpdates();
             _adaptiveBackdropController?.Dispose();
-            _acrylicController?.Dispose();
-            _acrylicController = null;
         }
 
         private sealed class ClipboardCardViewModel : INotifyPropertyChanged
@@ -2446,7 +1408,7 @@ namespace ClipPocketWin
                     }
                     else
                     {
-                        if (TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
+                        if (DibBitmapConverter.TryBuildBitmapFromDib(dibPayload, out byte[]? bmpBytes) && bmpBytes is not null)
                         {
                             File.WriteAllBytes(bmpPath, bmpBytes);
                         }
@@ -2462,51 +1424,6 @@ namespace ClipPocketWin
                 {
                     return null;
                 }
-            }
-
-            private static bool TryBuildBitmapFromDib(byte[] dibPayload, out byte[]? bmpBytes)
-            {
-                bmpBytes = null;
-                if (dibPayload.Length < 40)
-                {
-                    return false;
-                }
-
-                int headerSize = BitConverter.ToInt32(dibPayload, 0);
-                if (headerSize < 40 || headerSize > dibPayload.Length)
-                {
-                    return false;
-                }
-
-                short bitsPerPixel = BitConverter.ToInt16(dibPayload, 14);
-                int compression = BitConverter.ToInt32(dibPayload, 16);
-                int colorsUsed = BitConverter.ToInt32(dibPayload, 32);
-
-                int colorTableEntries = colorsUsed;
-                if (colorTableEntries == 0 && bitsPerPixel is > 0 and <= 8)
-                {
-                    colorTableEntries = 1 << bitsPerPixel;
-                }
-
-                int maskBytes = (compression is 3 or 6) ? 12 : 0;
-                int colorTableBytes = colorTableEntries * 4;
-                int pixelDataOffset = 14 + headerSize + maskBytes + colorTableBytes;
-                if (pixelDataOffset > int.MaxValue - dibPayload.Length)
-                {
-                    return false;
-                }
-
-                int fileSize = 14 + dibPayload.Length;
-                byte[] fileHeader = new byte[14];
-                fileHeader[0] = (byte)'B';
-                fileHeader[1] = (byte)'M';
-                Array.Copy(BitConverter.GetBytes(fileSize), 0, fileHeader, 2, 4);
-                Array.Copy(BitConverter.GetBytes(pixelDataOffset), 0, fileHeader, 10, 4);
-
-                bmpBytes = new byte[fileSize];
-                Buffer.BlockCopy(fileHeader, 0, bmpBytes, 0, fileHeader.Length);
-                Buffer.BlockCopy(dibPayload, 0, bmpBytes, fileHeader.Length, dibPayload.Length);
-                return true;
             }
 
             private static string ComputeStableHash(byte[] payload)
@@ -3008,34 +1925,5 @@ namespace ClipPocketWin
             }
         }
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDC(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetWindowDC(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-
-        [DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
-
-        [DllImport("user32.dll")]
-        private static extern bool IsWindow(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool IsIconic(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
-
-        [DllImport("user32.dll")]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
-
-        [DllImport("gdi32.dll")]
-        private static extern uint GetPixel(IntPtr hdc, int x, int y);
     }
 }
