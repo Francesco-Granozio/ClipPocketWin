@@ -44,7 +44,7 @@ public sealed class WindowsAutoPasteService : IAutoPasteService
             return Task.FromResult(Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null.")));
         }
 
-        if (item.Type == ClipboardItemType.Image)
+        if (item.IsImage)
         {
             if (item.BinaryContent is null || item.BinaryContent.Length == 0)
             {

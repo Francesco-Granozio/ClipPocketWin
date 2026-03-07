@@ -7,7 +7,7 @@ using System.Text;
 
 namespace ClipPocketWin.Logging;
 
-internal sealed class FileLoggerProvider : ILoggerProvider
+internal sealed partial class FileLoggerProvider : ILoggerProvider
 {
     private readonly string _logFilePath;
     private readonly object _syncRoot = new();
@@ -113,7 +113,7 @@ internal sealed class FileLoggerProvider : ILoggerProvider
         }
     }
 
-    private sealed class NullScope : IDisposable
+    private sealed partial class NullScope : IDisposable
     {
         public static NullScope Instance { get; } = new();
 

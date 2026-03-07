@@ -34,8 +34,7 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
 
             List<ClipboardItem> items = JsonSerializer.Deserialize<List<ClipboardItem>>(data, JsonSerialization.Options) ?? [];
             ClipboardItem[] filtered = items
-                .Where(item => item.Type != ClipboardItemType.Image || item.BinaryContent?.Length <= DomainLimits.MaxPersistedImageBytes)
-                .Take(DomainLimits.MaxHistoryItemsHardLimit)
+                .Where(item => item.CanPersist(DomainLimits.MaxPersistedImageBytes))
                 .ToArray();
 
             return Result<IReadOnlyList<ClipboardItem>>.Success(filtered);
@@ -64,8 +63,7 @@ public sealed class FileClipboardHistoryRepository : IClipboardHistoryRepository
             string destinationPath = StoragePaths.ClipboardHistoryJson;
 
             ClipboardItem[] filteredItems = items
-                .Where(item => item.Type != ClipboardItemType.Image || item.BinaryContent?.Length <= DomainLimits.MaxPersistedImageBytes)
-                .Take(DomainLimits.MaxHistoryItemsHardLimit)
+                .Where(item => item.CanPersist(DomainLimits.MaxPersistedImageBytes))
                 .ToArray();
 
             byte[] serialized = JsonSerializer.SerializeToUtf8Bytes(filteredItems, JsonSerialization.Options);

@@ -97,11 +97,11 @@ public sealed partial class SettingsWindow : Window
             IncognitoModeToggle.IsOn = _settings.IncognitoMode;
             HistoryLimitToggle.IsOn = _settings.EnableHistoryLimit;
             MaxHistoryNumberBox.Minimum = 10;
-            MaxHistoryNumberBox.Maximum = 500;
-            MaxHistoryNumberBox.Value = Math.Clamp(_settings.MaxHistoryItems, 10, 500);
+            MaxHistoryNumberBox.Maximum = double.MaxValue;
+            MaxHistoryNumberBox.Value = Math.Max(_settings.MaxHistoryItems, 10);
             MaxHistoryNumberBox.IsEnabled = _settings.EnableHistoryLimit;
             RecordShortcutButton.Content = _settings.KeyboardShortcut.DisplayString;
-            int clampedHistory = Math.Clamp(_settings.MaxHistoryItems, 10, 500);
+            int clampedHistory = Math.Max(_settings.MaxHistoryItems, 10);
             HistoryLimitDescription.Text = $"Keep up to {clampedHistory} items in history.";
 
             PackageVersion version = Package.Current.Id.Version;
@@ -208,13 +208,7 @@ public sealed partial class SettingsWindow : Window
             return;
         }
 
-        if (args.NewValue > 500)
-        {
-            sender.Value = 500;
-            return;
-        }
-
-        int nextValue = (int)Math.Clamp(args.NewValue, 10, 500);
+        int nextValue = (int)Math.Max(args.NewValue, 10);
         HistoryLimitDescription.Text = $"Keep up to {nextValue} items in history.";
 
         if (_settings.MaxHistoryItems == nextValue)
@@ -234,28 +228,28 @@ public sealed partial class SettingsWindow : Window
 
         TextBox? editor = FindChild<TextBox>(nb);
         string typedText = editor?.Text ?? nb.Text;
-        if (!double.TryParse(typedText, out double typedValue) || (typedValue <= DomainLimits.MaxHistoryItemsHardLimit && typedValue >= 1))
+        if (!double.TryParse(typedText, out double typedValue) || typedValue >= 10)
         {
             return;
         }
 
-        const int maxHistoryItems = DomainLimits.MaxHistoryItemsHardLimit;
-        nb.Value = maxHistoryItems;
-        HistoryLimitDescription.Text = $"Keep up to {maxHistoryItems} items in history.";
+        const int minHistoryItems = 10;
+        nb.Value = minHistoryItems;
+        HistoryLimitDescription.Text = $"Keep up to {minHistoryItems} items in history.";
 
         if (editor is not null)
         {
-            editor.Text = maxHistoryItems.ToString();
+            editor.Text = minHistoryItems.ToString();
             editor.Select(editor.Text.Length, 0);
         }
         else
         {
-            nb.Text = maxHistoryItems.ToString();
+            nb.Text = minHistoryItems.ToString();
         }
 
-        if (_settings.MaxHistoryItems != maxHistoryItems)
+        if (_settings.MaxHistoryItems != minHistoryItems)
         {
-            await SaveSettingsAsync(_settings with { MaxHistoryItems = maxHistoryItems });
+            await SaveSettingsAsync(_settings with { MaxHistoryItems = minHistoryItems });
         }
     }
 

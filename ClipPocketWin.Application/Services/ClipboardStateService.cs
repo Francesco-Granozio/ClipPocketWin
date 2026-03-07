@@ -1,5 +1,4 @@
 using ClipPocketWin.Application.Abstractions;
-using ClipPocketWin.Domain;
 using ClipPocketWin.Domain.Abstractions;
 using ClipPocketWin.Domain.Models;
 using ClipPocketWin.Shared.ResultPattern;
@@ -7,22 +6,13 @@ using Microsoft.Extensions.Logging;
 
 namespace ClipPocketWin.Application.Services;
 
-public sealed partial class ClipboardStateService : IClipboardStateService
+public sealed class ClipboardStateService : IClipboardStateService
 {
     private readonly IClipboardMonitor _clipboardMonitor;
-    private readonly IClipboardHistoryRepository _historyRepository;
-    private readonly IPinnedClipboardRepository _pinnedRepository;
-    private readonly ISettingsRepository _settingsRepository;
-    private readonly IAutoPasteService _autoPasteService;
+    private readonly ClipboardStateStore _stateStore;
+    private readonly ClipboardStatePersistenceCoordinator _persistenceCoordinator;
+    private readonly ClipboardSelectionService _selectionService;
     private readonly ILogger<ClipboardStateService> _logger;
-    private readonly object _syncRoot = new();
-
-    private List<ClipboardItem> _clipboardItems = [];
-    private List<PinnedClipboardItem> _pinnedItems = [];
-    private ClipboardItem[] _clipboardItemsSnapshot = [];
-    private PinnedClipboardItem[] _pinnedItemsSnapshot = [];
-    private ClipPocketSettings _settings = new();
-    private bool _runtimeStarted;
 
     public ClipboardStateService(
         IClipboardMonitor clipboardMonitor,
@@ -33,90 +23,38 @@ public sealed partial class ClipboardStateService : IClipboardStateService
         ILogger<ClipboardStateService> logger)
     {
         _clipboardMonitor = clipboardMonitor;
-        _historyRepository = historyRepository;
-        _pinnedRepository = pinnedRepository;
-        _settingsRepository = settingsRepository;
-        _autoPasteService = autoPasteService;
+        _stateStore = new ClipboardStateStore();
+        _persistenceCoordinator = new ClipboardStatePersistenceCoordinator(historyRepository, pinnedRepository, settingsRepository);
+        _selectionService = new ClipboardSelectionService(autoPasteService);
         _logger = logger;
     }
 
     public event EventHandler? StateChanged;
 
-    public IReadOnlyList<ClipboardItem> ClipboardItems
-    {
-        get
-        {
-            lock (_syncRoot)
-            {
-                return _clipboardItemsSnapshot;
-            }
-        }
-    }
+    public IReadOnlyList<ClipboardItem> ClipboardItems => _stateStore.ClipboardItems;
 
-    public IReadOnlyList<PinnedClipboardItem> PinnedItems
-    {
-        get
-        {
-            lock (_syncRoot)
-            {
-                return _pinnedItemsSnapshot;
-            }
-        }
-    }
+    public IReadOnlyList<PinnedClipboardItem> PinnedItems => _stateStore.PinnedItems;
 
-    public ClipPocketSettings Settings
-    {
-        get
-        {
-            lock (_syncRoot)
-            {
-                return _settings;
-            }
-        }
-    }
+    public ClipPocketSettings Settings => _stateStore.Settings;
 
     public async Task<Result> InitializeAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            Result<ClipPocketSettings> settingsResult = await _settingsRepository.LoadAsync(cancellationToken);
-            if (settingsResult.IsFailure)
+            Result<ClipboardStateInitializationData> loadResult = await _persistenceCoordinator.LoadAsync(cancellationToken);
+            if (loadResult.IsFailure)
             {
-                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize state settings.", settingsResult.Error?.Exception));
+                return Result.Failure(loadResult.Error!);
             }
 
-            ClipPocketSettings settings = settingsResult.Value!;
-
-            Result<IReadOnlyList<ClipboardItem>> historyResult = settings.RememberHistory
-                ? await _historyRepository.LoadAsync(cancellationToken)
-                : Result<IReadOnlyList<ClipboardItem>>.Success([]);
-
-            if (historyResult.IsFailure)
-            {
-                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize clipboard history state.", historyResult.Error?.Exception));
-            }
-
-            Result<IReadOnlyList<PinnedClipboardItem>> pinnedResult = await _pinnedRepository.LoadAsync(cancellationToken);
-            if (pinnedResult.IsFailure)
-            {
-                return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Failed to initialize pinned state.", pinnedResult.Error?.Exception));
-            }
-
-            lock (_syncRoot)
-            {
-                _settings = settings;
-                int targetLimit = _settings.EffectiveHistoryLimit;
-                _clipboardItems = historyResult.Value!.ToList();
-                if (_clipboardItems.Count > targetLimit)
-                {
-                    _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
-                }
-                _pinnedItems = pinnedResult.Value!.ToList();
-                RefreshSnapshotsUnsafe();
-            }
+            ClipboardStateInitializationData state = loadResult.Value;
+            _stateStore.Initialize(state.Settings, state.HistoryItems, state.PinnedItems);
 
 #if DEBUG
-            _logger.LogInformation("Initialized state with {HistoryCount} history items and {PinnedCount} pinned items", _clipboardItems.Count, _pinnedItems.Count);
+            _logger.LogInformation(
+                "Initialized state with {HistoryCount} history items and {PinnedCount} pinned items",
+                _stateStore.ClipboardItems.Count,
+                _stateStore.PinnedItems.Count);
 #endif
             OnStateChanged();
             return Result.Success();
@@ -127,7 +65,10 @@ public sealed partial class ClipboardStateService : IClipboardStateService
         }
         catch (Exception exception)
         {
-            return Result.Failure(new Error(ErrorCode.StateInitializationFailed, "Unexpected failure while initializing state.", exception));
+            return Result.Failure(new Error(
+                ErrorCode.StateInitializationFailed,
+                "Unexpected failure while initializing state.",
+                exception));
         }
     }
 
@@ -138,32 +79,10 @@ public sealed partial class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null."));
         }
 
-        lock (_syncRoot)
+        bool changed = _stateStore.TryAddClipboardItem(item);
+        if (!changed)
         {
-            if (_settings.IncognitoMode)
-            {
-                return Result.Success();
-            }
-
-            if (IsExcludedBySourceApplication(item, _settings))
-            {
-                return Result.Success();
-            }
-
-            if (_clipboardItems.Any(existing => existing.IsEquivalentContent(item)))
-            {
-                return Result.Success();
-            }
-
-            _clipboardItems.Insert(0, item);
-
-            int targetLimit = _settings.EffectiveHistoryLimit;
-            if (_clipboardItems.Count > targetLimit)
-            {
-                _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
-            }
-
-            RefreshSnapshotsUnsafe();
+            return Result.Success();
         }
 
         Result persistResult = await PersistHistoryAsync(cancellationToken);
@@ -178,20 +97,12 @@ public sealed partial class ClipboardStateService : IClipboardStateService
 
     public async Task<Result> StartRuntimeAsync(CancellationToken cancellationToken = default)
     {
-        lock (_syncRoot)
+        if (_stateStore.RuntimeStarted)
         {
-            if (_runtimeStarted)
-            {
-                return Result.Success();
-            }
+            return Result.Success();
         }
 
-        bool captureRichTextEnabled;
-        lock (_syncRoot)
-        {
-            captureRichTextEnabled = _settings.CaptureRichText;
-        }
-
+        bool captureRichTextEnabled = _stateStore.CaptureRichTextEnabled;
         Result startResult = await _clipboardMonitor.StartAsync(HandleClipboardItemCapturedAsync, captureRichTextEnabled, cancellationToken);
         if (startResult.IsFailure)
         {
@@ -201,10 +112,7 @@ public sealed partial class ClipboardStateService : IClipboardStateService
                 startResult.Error?.Exception));
         }
 
-        lock (_syncRoot)
-        {
-            _runtimeStarted = true;
-        }
+        _stateStore.MarkRuntimeStarted();
 
 #if DEBUG
         _logger.LogInformation("Clipboard runtime monitor started.");
@@ -214,12 +122,9 @@ public sealed partial class ClipboardStateService : IClipboardStateService
 
     public async Task<Result> StopRuntimeAsync(CancellationToken cancellationToken = default)
     {
-        lock (_syncRoot)
+        if (!_stateStore.RuntimeStarted)
         {
-            if (!_runtimeStarted)
-            {
-                return Result.Success();
-            }
+            return Result.Success();
         }
 
         Result stopResult = await _clipboardMonitor.StopAsync(cancellationToken);
@@ -231,10 +136,7 @@ public sealed partial class ClipboardStateService : IClipboardStateService
                 stopResult.Error?.Exception));
         }
 
-        lock (_syncRoot)
-        {
-            _runtimeStarted = false;
-        }
+        _stateStore.MarkRuntimeStopped();
 
 #if DEBUG
         _logger.LogInformation("Clipboard runtime monitor stopped.");
@@ -244,19 +146,7 @@ public sealed partial class ClipboardStateService : IClipboardStateService
 
     public async Task<Result> DeleteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        bool changed;
-        lock (_syncRoot)
-        {
-            bool historyChanged = _clipboardItems.RemoveAll(x => x.Id == id) > 0;
-            bool pinnedChanged = _pinnedItems.RemoveAll(x => x.OriginalItem.Id == id) > 0;
-            changed = historyChanged || pinnedChanged;
-
-            if (changed)
-            {
-                RefreshSnapshotsUnsafe();
-            }
-        }
-
+        bool changed = _stateStore.RemoveClipboardItem(id);
         if (!changed)
         {
             return Result.Success();
@@ -268,10 +158,13 @@ public sealed partial class ClipboardStateService : IClipboardStateService
             return historyPersistResult;
         }
 
-        Result pinnedPersistResult = await _pinnedRepository.SaveAsync(PinnedItems, cancellationToken);
+        Result pinnedPersistResult = await _persistenceCoordinator.SavePinnedAsync(_stateStore.PinnedItems, cancellationToken);
         if (pinnedPersistResult.IsFailure)
         {
-            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist pinned items after deleting clipboard item.", pinnedPersistResult.Error?.Exception));
+            return Result.Failure(new Error(
+                ErrorCode.StatePersistenceFailed,
+                "Failed to persist pinned items after deleting clipboard item.",
+                pinnedPersistResult.Error?.Exception));
         }
 
         OnStateChanged();
@@ -280,72 +173,52 @@ public sealed partial class ClipboardStateService : IClipboardStateService
 
     public async Task<Result> SelectClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        ClipboardItem? item = ResolveClipboardItem(id);
+        ClipboardItem? item = _stateStore.ResolveClipboardItem(id);
         if (item is null)
         {
-            return Result.Failure(new Error(ErrorCode.ClipboardHistoryItemNotFound, $"Clipboard item with id '{id}' was not found."));
+            return Result.Failure(new Error(
+                ErrorCode.ClipboardHistoryItemNotFound,
+                $"Clipboard item with id '{id}' was not found."));
         }
 
-        bool autoPasteEnabled;
-        lock (_syncRoot)
-        {
-            autoPasteEnabled = _settings.AutoPasteEnabled;
-        }
-
-        Result setClipboardResult = await _autoPasteService.SetClipboardContentAsync(item, cancellationToken);
-        if (setClipboardResult.IsFailure)
-        {
-            return setClipboardResult;
-        }
-
-        if (!autoPasteEnabled)
-        {
-            return Result.Success();
-        }
-
-        Result pasteResult = await _autoPasteService.PasteToPreviousWindowAsync(cancellationToken);
-        if (pasteResult.IsFailure)
-        {
-            return pasteResult;
-        }
-
-        return Result.Success();
+        bool autoPasteEnabled = _stateStore.Settings.AutoPasteEnabled;
+        return await _selectionService.SelectClipboardItemAsync(item, autoPasteEnabled, cancellationToken);
     }
 
     public async Task<Result> CopyClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        ClipboardItem? item = ResolveClipboardItem(id);
+        ClipboardItem? item = _stateStore.ResolveClipboardItem(id);
         if (item is null)
         {
-            return Result.Failure(new Error(ErrorCode.ClipboardHistoryItemNotFound, $"Clipboard item with id '{id}' was not found."));
+            return Result.Failure(new Error(
+                ErrorCode.ClipboardHistoryItemNotFound,
+                $"Clipboard item with id '{id}' was not found."));
         }
 
-        return await _autoPasteService.SetClipboardContentAsync(item, cancellationToken);
+        return await _selectionService.CopyClipboardItemAsync(item, cancellationToken);
     }
 
     public async Task<Result> PasteClipboardItemAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        Result copyResult = await CopyClipboardItemAsync(id, cancellationToken);
-        if (copyResult.IsFailure)
+        ClipboardItem? item = _stateStore.ResolveClipboardItem(id);
+        if (item is null)
         {
-            return copyResult;
+            return Result.Failure(new Error(
+                ErrorCode.ClipboardHistoryItemNotFound,
+                $"Clipboard item with id '{id}' was not found."));
         }
 
-        return await _autoPasteService.PasteToPreviousWindowAsync(cancellationToken);
+        return await _selectionService.PasteClipboardItemAsync(item, cancellationToken);
     }
 
     public async Task<Result> ClearClipboardHistoryAsync(CancellationToken cancellationToken = default)
     {
-        lock (_syncRoot)
-        {
-            _clipboardItems.Clear();
-            RefreshSnapshotsUnsafe();
-        }
+        _stateStore.ClearClipboardHistory();
 
-        Result clearResult = await _historyRepository.ClearAsync(cancellationToken);
+        Result clearResult = await _persistenceCoordinator.ClearHistoryAsync(cancellationToken);
         if (clearResult.IsFailure)
         {
-            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to clear clipboard history.", clearResult.Error?.Exception));
+            return clearResult;
         }
 
         OnStateChanged();
@@ -359,29 +232,12 @@ public sealed partial class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.ClipboardItemInvalid, "Clipboard item cannot be null when toggling pin."));
         }
 
-        lock (_syncRoot)
-        {
-            int index = _pinnedItems.FindIndex(x => x.OriginalItem.IsEquivalentContent(item));
-            if (index >= 0)
-            {
-                _pinnedItems.RemoveAt(index);
-            }
-            else
-            {
-                _pinnedItems.Insert(0, new PinnedClipboardItem { OriginalItem = item });
-                if (_pinnedItems.Count > DomainLimits.MaxPinnedItems)
-                {
-                    _pinnedItems.RemoveRange(DomainLimits.MaxPinnedItems, _pinnedItems.Count - DomainLimits.MaxPinnedItems);
-                }
-            }
+        _stateStore.TogglePin(item);
 
-            RefreshSnapshotsUnsafe();
-        }
-
-        Result saveResult = await _pinnedRepository.SaveAsync(PinnedItems, cancellationToken);
+        Result saveResult = await _persistenceCoordinator.SavePinnedAsync(_stateStore.PinnedItems, cancellationToken);
         if (saveResult.IsFailure)
         {
-            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist pinned clipboard items.", saveResult.Error?.Exception));
+            return saveResult;
         }
 
         OnStateChanged();
@@ -395,31 +251,15 @@ public sealed partial class ClipboardStateService : IClipboardStateService
             return Result.Failure(new Error(ErrorCode.SettingsInvalid, "Settings cannot be null."));
         }
 
-        bool captureRichTextChanged;
-        bool limitEnforced = false;
+        ClipboardStateSettingsUpdate update = _stateStore.ApplySettings(settings);
 
-        lock (_syncRoot)
-        {
-            captureRichTextChanged = _settings.CaptureRichText != settings.CaptureRichText;
-            _settings = settings;
-
-            int targetLimit = _settings.EffectiveHistoryLimit;
-            if (_clipboardItems.Count > targetLimit)
-            {
-                _clipboardItems.RemoveRange(targetLimit, _clipboardItems.Count - targetLimit);
-                limitEnforced = true;
-            }
-
-            RefreshSnapshotsUnsafe();
-        }
-
-        Result saveSettingsResult = await _settingsRepository.SaveAsync(settings, cancellationToken);
+        Result saveSettingsResult = await _persistenceCoordinator.SaveSettingsAsync(settings, cancellationToken);
         if (saveSettingsResult.IsFailure)
         {
-            return Result.Failure(new Error(ErrorCode.StatePersistenceFailed, "Failed to persist settings.", saveSettingsResult.Error?.Exception));
+            return saveSettingsResult;
         }
 
-        if (limitEnforced)
+        if (update.HistoryLimitEnforced)
         {
             Result persistResult = await PersistHistoryAsync(cancellationToken);
             if (persistResult.IsFailure)
@@ -428,7 +268,7 @@ public sealed partial class ClipboardStateService : IClipboardStateService
             }
         }
 
-        if (captureRichTextChanged)
+        if (update.CaptureRichTextChanged)
         {
             Result richTextModeResult = await _clipboardMonitor.UpdateCaptureRichTextAsync(settings.CaptureRichText, cancellationToken);
             if (richTextModeResult.IsFailure)
@@ -444,4 +284,25 @@ public sealed partial class ClipboardStateService : IClipboardStateService
         return Result.Success();
     }
 
+    private async Task<Result> PersistHistoryAsync(CancellationToken cancellationToken)
+    {
+        ClipPocketSettings settings = _stateStore.Settings;
+        if (!settings.RememberHistory)
+        {
+            return Result.Success();
+        }
+
+        IReadOnlyList<ClipboardItem> snapshot = _stateStore.BuildPersistableHistorySnapshot();
+        return await _persistenceCoordinator.SaveHistoryAsync(snapshot, cancellationToken);
+    }
+
+    private Task<Result> HandleClipboardItemCapturedAsync(ClipboardItem item)
+    {
+        return AddClipboardItemAsync(item);
+    }
+
+    private void OnStateChanged()
+    {
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 }

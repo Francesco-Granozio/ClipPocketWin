@@ -92,12 +92,10 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
             return Task.FromResult(Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Current clipboard item cannot be converted to Base64.")));
         }
 
-        ClipboardItem output = new()
-        {
-            Type = ClipboardItemType.Text,
-            Timestamp = DateTimeOffset.UtcNow,
-            TextContent = encoded
-        };
+        ClipboardItem output = ClipboardItemFactory.CreateText(
+            ClipboardItemType.Text,
+            DateTimeOffset.UtcNow,
+            encoded);
 
         return _autoPasteService.SetClipboardContentAsync(output, cancellationToken);
     }
@@ -126,16 +124,14 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
         }
 
         string nextText = editedText ?? string.Empty;
-        ClipboardItemType outputType = sourceItem.Type == ClipboardItemType.RichText
+        ClipboardItemType outputType = sourceItem.IsRichText
             ? ClipboardItemType.Text
             : sourceItem.Type;
 
-        ClipboardItem output = new()
-        {
-            Type = outputType,
-            Timestamp = DateTimeOffset.UtcNow,
-            TextContent = nextText
-        };
+        ClipboardItem output = ClipboardItemFactory.CreateText(
+            outputType,
+            DateTimeOffset.UtcNow,
+            nextText);
 
         return _autoPasteService.SetClipboardContentAsync(output, cancellationToken);
     }
@@ -164,12 +160,10 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
             return Result.Failure(new Error(ErrorCode.DataFormatInvalid, "Failed to process URL encoding/decoding.", exception));
         }
 
-        ClipboardItem output = new()
-        {
-            Type = ClipboardItemType.Text,
-            Timestamp = DateTimeOffset.UtcNow,
-            TextContent = transformed
-        };
+        ClipboardItem output = ClipboardItemFactory.CreateText(
+            ClipboardItemType.Text,
+            DateTimeOffset.UtcNow,
+            transformed);
 
         return await _autoPasteService.SetClipboardContentAsync(output, cancellationToken);
     }
@@ -178,80 +172,77 @@ public sealed class WindowsQuickActionsService : IQuickActionsService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        switch (item.Type)
+        if (item.IsRichText && item.RichTextContent?.RtfData is { Length: > 0 } rtfData)
         {
-            case ClipboardItemType.Text:
-            case ClipboardItemType.Code:
-            case ClipboardItemType.Url:
-            case ClipboardItemType.Email:
-            case ClipboardItemType.Phone:
-            case ClipboardItemType.Json:
-            case ClipboardItemType.Color:
-                {
-                    string text = item.TextContent ?? string.Empty;
-                    await File.WriteAllTextAsync(path, text, Encoding.UTF8, cancellationToken);
-                    return Result.Success();
-                }
-            case ClipboardItemType.RichText:
-                {
-                    if (item.RichTextContent?.RtfData is { Length: > 0 } rtfData)
-                    {
-                        await File.WriteAllBytesAsync(path, rtfData, cancellationToken);
-                        return Result.Success();
-                    }
-
-                    string text = item.RichTextContent?.PlainText ?? item.TextContent ?? string.Empty;
-                    await File.WriteAllTextAsync(path, text, Encoding.UTF8, cancellationToken);
-                    return Result.Success();
-                }
-            case ClipboardItemType.Image:
-                {
-                    if (item.BinaryContent is null || item.BinaryContent.Length == 0)
-                    {
-                        return Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Image clipboard item has no binary payload."));
-                    }
-
-                    if (DibBitmapConverter.TryBuildBitmapFromDib(item.BinaryContent, out byte[]? bmpBytes) && bmpBytes is not null)
-                    {
-                        await File.WriteAllBytesAsync(path, bmpBytes, cancellationToken);
-                    }
-                    else
-                    {
-                        await File.WriteAllBytesAsync(path, item.BinaryContent, cancellationToken);
-                    }
-
-                    return Result.Success();
-                }
-            case ClipboardItemType.File:
-                {
-                    if (string.IsNullOrWhiteSpace(item.FilePath) || !File.Exists(item.FilePath))
-                    {
-                        return Result.Failure(new Error(ErrorCode.NotFound, "Source file was not found for Save to file."));
-                    }
-
-                    File.Copy(item.FilePath, path, overwrite: true);
-                    return Result.Success();
-                }
-            default:
-                return Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Clipboard item type is not supported for Save to file."));
+            await File.WriteAllBytesAsync(path, rtfData, cancellationToken);
+            return Result.Success();
         }
+
+        if (item.IsImage)
+        {
+            if (item.BinaryContent is null || item.BinaryContent.Length == 0)
+            {
+                return Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Image clipboard item has no binary payload."));
+            }
+
+            if (DibBitmapConverter.TryBuildBitmapFromDib(item.BinaryContent, out byte[]? bmpBytes) && bmpBytes is not null)
+            {
+                await File.WriteAllBytesAsync(path, bmpBytes, cancellationToken);
+            }
+            else
+            {
+                await File.WriteAllBytesAsync(path, item.BinaryContent, cancellationToken);
+            }
+
+            return Result.Success();
+        }
+
+        if (item.IsFile)
+        {
+            if (string.IsNullOrWhiteSpace(item.FilePath) || !File.Exists(item.FilePath))
+            {
+                return Result.Failure(new Error(ErrorCode.NotFound, "Source file was not found for Save to file."));
+            }
+
+            File.Copy(item.FilePath, path, overwrite: true);
+            return Result.Success();
+        }
+
+        string? textPayload = item.ResolveTextPayload();
+        if (!string.IsNullOrWhiteSpace(textPayload))
+        {
+            await File.WriteAllTextAsync(path, textPayload, Encoding.UTF8, cancellationToken);
+            return Result.Success();
+        }
+
+        return Result.Failure(new Error(ErrorCode.ClipboardItemUnsupportedType, "Clipboard item type is not supported for Save to file."));
     }
 
     private static (string TypeName, string Extension) ResolveSaveType(ClipboardItem item)
     {
-        return item.Type switch
+        if (item.IsImage)
         {
-            ClipboardItemType.Image => ("Bitmap image", ".bmp"),
-            ClipboardItemType.RichText => ("Rich text", ".rtf"),
-            ClipboardItemType.File => ("All files", Path.GetExtension(item.FilePath) is { Length: > 1 } ext ? ext : ".bin"),
-            _ => ("Text file", ".txt")
-        };
+            return ("Bitmap image", ".bmp");
+        }
+
+        if (item.IsRichText)
+        {
+            return ("Rich text", ".rtf");
+        }
+
+        if (item.IsFile)
+        {
+            string extension = Path.GetExtension(item.FilePath) ?? string.Empty;
+            return ("All files", extension is { Length: > 1 } ext ? ext : ".bin");
+        }
+
+        return ("Text file", ".txt");
     }
 
     private static string BuildSuggestedName(ClipboardItem item, string extension)
     {
         string timestamp = item.Timestamp.ToLocalTime().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
-        string baseName = item.Type == ClipboardItemType.File && !string.IsNullOrWhiteSpace(item.FilePath)
+        string baseName = item.IsFile && !string.IsNullOrWhiteSpace(item.FilePath)
             ? Path.GetFileNameWithoutExtension(item.FilePath)
             : $"clipboard-{timestamp}";
 

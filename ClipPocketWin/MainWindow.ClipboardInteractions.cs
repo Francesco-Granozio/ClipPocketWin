@@ -81,40 +81,35 @@ public sealed partial class MainWindow
         args.Data.RequestedOperation = DataPackageOperation.Copy;
         string? textPayload = item.ResolveTextPayload();
 
-        switch (item.Type)
+        if (item.IsFile)
         {
-            case ClipboardItemType.File:
-                {
-                    if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
-                    {
+            if (!string.IsNullOrWhiteSpace(item.FilePath) && File.Exists(item.FilePath))
+            {
 #if DEBUG
-                        _logger?.LogInformation("Drag file resolved: {FilePath}, exists=true", item.FilePath);
+                _logger?.LogInformation("Drag file resolved: {FilePath}, exists=true", item.FilePath);
 #endif
-                        StorageFile storageFile = await StorageFile.GetFileFromPathAsync(item.FilePath);
-                        args.Data.SetStorageItems([storageFile]);
-                        return;
-                    }
+                StorageFile storageFile = await StorageFile.GetFileFromPathAsync(item.FilePath);
+                args.Data.SetStorageItems([storageFile]);
+                return;
+            }
 
 #if DEBUG
-                    _logger?.LogWarning("Drag file path missing or not found: {FilePath}", item.FilePath);
+            _logger?.LogWarning("Drag file path missing or not found: {FilePath}", item.FilePath);
 #endif
-                    break;
-                }
-            case ClipboardItemType.Image:
-                {
-                    if (item.BinaryContent is { Length: > 0 } binaryContent)
-                    {
-                        string? dragImagePath = BuildDragImagePath(binaryContent);
-                        if (!string.IsNullOrWhiteSpace(dragImagePath) && File.Exists(dragImagePath))
-                        {
-                            StorageFile storageFile = await StorageFile.GetFileFromPathAsync(dragImagePath);
-                            args.Data.SetStorageItems([storageFile]);
-                            return;
-                        }
-                    }
+        }
 
-                    break;
+        if (item.IsImage)
+        {
+            if (item.BinaryContent is { Length: > 0 } binaryContent)
+            {
+                string? dragImagePath = BuildDragImagePath(binaryContent);
+                if (!string.IsNullOrWhiteSpace(dragImagePath) && File.Exists(dragImagePath))
+                {
+                    StorageFile storageFile = await StorageFile.GetFileFromPathAsync(dragImagePath);
+                    args.Data.SetStorageItems([storageFile]);
+                    return;
                 }
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(textPayload))

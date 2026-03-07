@@ -1,4 +1,5 @@
 using ClipPocketWin.Domain.Models;
+using ClipPocketWin.Shared.Colors;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -127,21 +128,6 @@ internal static partial class ClipboardItemClassifier
     [GeneratedRegex(@"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex EmailRegex();
 
-    [GeneratedRegex(@"^#([0-9a-fA-F]{3}){1,2}$", RegexOptions.Compiled)]
-    private static partial Regex HexColorRegex();
-
-    [GeneratedRegex(@"^rgb\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
-    private static partial Regex RgbColorRegex();
-
-    [GeneratedRegex(@"^hsl\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
-    private static partial Regex HslColorRegex();
-
-    [GeneratedRegex(@"^rgba\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
-    private static partial Regex RgbaColorRegex();
-
-    [GeneratedRegex(@"^hsla\(", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
-    private static partial Regex HslaColorRegex();
-
     [GeneratedRegex(@"^\s*(if|for|while)\s*\(", RegexOptions.Compiled)]
     private static partial Regex ControlFlowRegex();
 
@@ -157,10 +143,6 @@ internal static partial class ClipboardItemClassifier
 
     private static bool IsColor(string input)
     {
-        return HexColorRegex().IsMatch(input)
-            || RgbColorRegex().IsMatch(input)
-            || HslColorRegex().IsMatch(input)
-            || RgbaColorRegex().IsMatch(input)
-            || HslaColorRegex().IsMatch(input);
+        return ClipboardColorParser.TryParse(input, out _);
     }
 }

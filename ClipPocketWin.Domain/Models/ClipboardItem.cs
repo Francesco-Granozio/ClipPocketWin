@@ -1,10 +1,10 @@
 namespace ClipPocketWin.Domain.Models;
 
-public sealed record ClipboardItem
+public abstract record ClipboardItem
 {
     public Guid Id { get; init; } = Guid.NewGuid();
 
-    public ClipboardItemType Type { get; init; }
+    public abstract ClipboardItemType Type { get; init; }
 
     public DateTimeOffset Timestamp { get; init; }
 
@@ -12,79 +12,66 @@ public sealed record ClipboardItem
 
     public string? SourceApplicationExecutablePath { get; init; }
 
-    public string? TextContent { get; init; }
+    public virtual string? TextContent { get; init; }
 
-    public byte[]? BinaryContent { get; init; }
+    public virtual byte[]? BinaryContent { get; init; }
 
-    public string? FilePath { get; init; }
+    public virtual string? FilePath { get; init; }
 
-    public RichTextContent? RichTextContent { get; init; }
+    public virtual RichTextContent? RichTextContent { get; init; }
 
-    public bool CanEditText => Type is ClipboardItemType.Text
-        or ClipboardItemType.Code
-        or ClipboardItemType.Url
-        or ClipboardItemType.Email
-        or ClipboardItemType.Phone
-        or ClipboardItemType.Json
-        or ClipboardItemType.Color
-        or ClipboardItemType.RichText;
+    public virtual bool CanEditText => false;
 
-    public string DisplayString => Type switch
+    public abstract string DisplayString { get; }
+
+    public virtual string TypeFilterTag => Type.ToString();
+
+    public virtual string StylePaletteKey => TypeFilterTag;
+
+    public virtual bool IsImage => false;
+
+    public virtual bool IsFile => false;
+
+    public virtual bool IsColor => false;
+
+    public virtual bool IsCode => false;
+
+    public virtual bool IsRichText => false;
+
+    public virtual string TypeLabel => Type switch
     {
-        ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
-            => TrimForDisplay(TextContent),
-        ClipboardItemType.Image => "Image",
-        ClipboardItemType.File => string.IsNullOrWhiteSpace(FilePath) ? "File" : Path.GetFileName(FilePath),
-        ClipboardItemType.RichText => RichTextContent?.DisplayString ?? "Rich Text",
-        _ => "Clipboard Item"
+        ClipboardItemType.Url => "URL",
+        ClipboardItemType.Json => "JSON",
+        ClipboardItemType.RichText => "Rich Text",
+        _ => Type.ToString()
     };
 
-    public bool IsEquivalentContent(ClipboardItem other)
+    public virtual string Glyph => Type switch
     {
-        if (other.Type != Type)
-        {
-            return false;
-        }
+        ClipboardItemType.Text => "\uE8A4",
+        ClipboardItemType.Code => "\uE943",
+        ClipboardItemType.Url => "\uE71B",
+        ClipboardItemType.Email => "\uE715",
+        ClipboardItemType.Phone => "\uE717",
+        ClipboardItemType.Json => "\uE9D5",
+        ClipboardItemType.Color => "\uE790",
+        ClipboardItemType.Image => "\uEB9F",
+        ClipboardItemType.File => "\uE7C3",
+        ClipboardItemType.RichText => "\uE8D2",
+        _ => "\uE8A5"
+    };
 
-        return Type switch
-        {
-            ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
-                => string.Equals(TextContent, other.TextContent, StringComparison.Ordinal),
-            ClipboardItemType.Image => BinaryEquals(BinaryContent, other.BinaryContent),
-            ClipboardItemType.File => string.Equals(FilePath, other.FilePath, StringComparison.OrdinalIgnoreCase),
-            ClipboardItemType.RichText => string.Equals(RichTextContent?.PlainText, other.RichTextContent?.PlainText, StringComparison.Ordinal),
-            _ => false
-        };
-    }
+    public virtual string PreviewText => NormalizePreviewText(ResolveTextPayload(), DisplayString);
 
-    public string? ResolveTextPayload()
-    {
-        return Type switch
-        {
-            ClipboardItemType.Text or ClipboardItemType.Code or ClipboardItemType.Url or ClipboardItemType.Email or ClipboardItemType.Phone or ClipboardItemType.Json or ClipboardItemType.Color
-                => TextContent,
-            ClipboardItemType.RichText
-                => RichTextContent?.PlainText ?? TextContent,
-            ClipboardItemType.File
-                => FilePath ?? TextContent,
-            _
-                => null
-        };
-    }
+    public abstract bool IsEquivalentContent(ClipboardItem other);
 
-    public string? ResolveEditableTextPayload()
-    {
-        if (!CanEditText)
-        {
-            return null;
-        }
+    public virtual string? ResolveTextPayload() => null;
 
-        return Type == ClipboardItemType.RichText
-            ? RichTextContent?.PlainText ?? TextContent ?? string.Empty
-            : TextContent ?? string.Empty;
-    }
+    public virtual string? ResolveEditableTextPayload() => null;
 
-    private static bool BinaryEquals(byte[]? left, byte[]? right)
+    public virtual bool CanPersist(int maxPersistedImageBytes) => true;
+
+    protected static bool BinaryEquals(byte[]? left, byte[]? right)
     {
         if (left is null && right is null)
         {
@@ -99,7 +86,7 @@ public sealed record ClipboardItem
         return left.AsSpan().SequenceEqual(right);
     }
 
-    private static string TrimForDisplay(string? value)
+    protected static string TrimForDisplay(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -108,5 +95,18 @@ public sealed record ClipboardItem
 
         const int maxLength = 100;
         return value.Length > maxLength ? value[..maxLength] : value;
+    }
+
+    protected static string NormalizePreviewText(string? preview, string fallback)
+    {
+        string normalized = string.IsNullOrWhiteSpace(preview) ? fallback : preview;
+        normalized = normalized.Replace("\r", " ", StringComparison.Ordinal)
+                             .Replace("\n", " ", StringComparison.Ordinal)
+                             .Trim();
+
+        const int maxPreviewLength = 180;
+        return normalized.Length > maxPreviewLength
+            ? normalized[..maxPreviewLength]
+            : normalized;
     }
 }

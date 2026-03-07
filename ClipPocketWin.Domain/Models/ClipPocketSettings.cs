@@ -26,5 +26,5 @@ public sealed record ClipPocketSettings
 
     public HashSet<string> ExcludedAppIds { get; init; } = [];
 
-    public int EffectiveHistoryLimit => EnableHistoryLimit ? Math.Min(Math.Max(MaxHistoryItems, 10), DomainLimits.MaxHistoryItemsHardLimit) : DomainLimits.MaxHistoryItemsHardLimit;
+    public int EffectiveHistoryLimit => EnableHistoryLimit ? Math.Max(MaxHistoryItems, 10) : int.MaxValue;
 }

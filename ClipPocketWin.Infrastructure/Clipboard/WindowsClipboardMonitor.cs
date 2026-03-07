@@ -2,24 +2,13 @@ using ClipPocketWin.Application.Abstractions;
 using ClipPocketWin.Domain.Models;
 using ClipPocketWin.Shared.ResultPattern;
 using Microsoft.Extensions.Logging;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.RegularExpressions;
 
 namespace ClipPocketWin.Infrastructure.Clipboard;
 
-public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
+public sealed class WindowsClipboardMonitor : IClipboardMonitor, IDisposable
 {
-    private const uint ClipboardFormatUnicodeText = 13;
-    private const uint ClipboardFormatDib = 8;
-    private const uint ClipboardFormatDibV5 = 17;
-    private const uint ClipboardFormatHDrop = 15;
-    private const uint ProcessQueryLimitedInformation = 0x1000;
-    private const uint DragQueryFileCount = 0xFFFFFFFF;
-    private static readonly uint HtmlClipboardFormat = RegisterClipboardFormat("HTML Format");
-    private static readonly uint RtfClipboardFormat = RegisterClipboardFormat("Rich Text Format");
-
     private readonly ILogger<WindowsClipboardMonitor> _logger;
+    private readonly WindowsClipboardPayloadReader _payloadReader;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromMilliseconds(250);
     private readonly object _syncRoot = new();
 
@@ -33,6 +22,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
     public WindowsClipboardMonitor(ILogger<WindowsClipboardMonitor> logger)
     {
         _logger = logger;
+        _payloadReader = new WindowsClipboardPayloadReader();
     }
 
     public Task<Result> StartAsync(
@@ -57,7 +47,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 _monitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _captureCallback = onClipboardItemCapturedAsync;
                 _captureRichTextEnabled = captureRichTextEnabled;
-                _lastClipboardSequence = GetClipboardSequenceNumber();
+                _lastClipboardSequence = WindowsClipboardNativeApi.GetClipboardSequenceNumber();
                 _isRunning = true;
                 _monitorTask = Task.Run(() => MonitorLoopAsync(_monitorCts.Token), CancellationToken.None);
             }
@@ -69,7 +59,10 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         }
         catch (Exception exception)
         {
-            return Task.FromResult(Result.Failure(new Error(ErrorCode.ClipboardMonitorStartFailed, "Failed to start Windows clipboard monitor.", exception)));
+            return Task.FromResult(Result.Failure(new Error(
+                ErrorCode.ClipboardMonitorStartFailed,
+                "Failed to start Windows clipboard monitor.",
+                exception)));
         }
     }
 
@@ -116,12 +109,26 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
         }
         catch (Exception exception)
         {
-            return Result.Failure(new Error(ErrorCode.InvalidOperation, "Failed to stop Windows clipboard monitor.", exception));
+            return Result.Failure(new Error(
+                ErrorCode.InvalidOperation,
+                "Failed to stop Windows clipboard monitor.",
+                exception));
         }
         finally
         {
             monitorCts?.Dispose();
         }
+    }
+
+    public Task<Result> UpdateCaptureRichTextAsync(bool captureRichTextEnabled, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_syncRoot)
+        {
+            _captureRichTextEnabled = captureRichTextEnabled;
+        }
+
+        return Task.FromResult(Result.Success());
     }
 
     public void Dispose()
@@ -145,7 +152,7 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             using PeriodicTimer timer = new(_pollingInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                uint currentSequence = GetClipboardSequenceNumber();
+                uint currentSequence = WindowsClipboardNativeApi.GetClipboardSequenceNumber();
                 if (currentSequence == _lastClipboardSequence)
                 {
                     continue;
@@ -159,11 +166,15 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     captureRichTextEnabled = _captureRichTextEnabled;
                 }
 
-                Result<IReadOnlyList<ClipboardItem>> captureResult = TryReadClipboardItems(captureRichTextEnabled);
+                Result<IReadOnlyList<ClipboardItem>> captureResult = _payloadReader.TryReadClipboardItems(captureRichTextEnabled);
                 if (captureResult.IsFailure)
                 {
 #if DEBUG
-                    _logger.LogWarning(captureResult.Error?.Exception, "Clipboard capture failed with code {ErrorCode}: {Message}", captureResult.Error?.Code, captureResult.Error?.Message);
+                    _logger.LogWarning(
+                        captureResult.Error?.Exception,
+                        "Clipboard capture failed with code {ErrorCode}: {Message}",
+                        captureResult.Error?.Code,
+                        captureResult.Error?.Message);
 #endif
                     continue;
                 }
@@ -173,7 +184,6 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                 {
                     continue;
                 }
-
 
                 Func<ClipboardItem, Task<Result>>? callback;
                 lock (_syncRoot)
@@ -192,7 +202,11 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
                     if (callbackResult.IsFailure)
                     {
 #if DEBUG
-                        _logger.LogWarning(callbackResult.Error?.Exception, "Clipboard item processing failed with code {ErrorCode}: {Message}", callbackResult.Error?.Code, callbackResult.Error?.Message);
+                        _logger.LogWarning(
+                            callbackResult.Error?.Exception,
+                            "Clipboard item processing failed with code {ErrorCode}: {Message}",
+                            callbackResult.Error?.Code,
+                            callbackResult.Error?.Message);
 #endif
                     }
                 }
@@ -207,16 +221,5 @@ public sealed partial class WindowsClipboardMonitor : IClipboardMonitor, IDispos
             _logger.LogError(exception, "Clipboard monitor loop terminated unexpectedly.");
 #endif
         }
-    }
-
-    public Task<Result> UpdateCaptureRichTextAsync(bool captureRichTextEnabled, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_syncRoot)
-        {
-            _captureRichTextEnabled = captureRichTextEnabled;
-        }
-
-        return Task.FromResult(Result.Success());
     }
 }

@@ -10,6 +10,7 @@ internal static class JsonSerialization
         WriteIndented = true,
         Converters =
         {
+            new ClipboardItemJsonConverter(),
             new JsonStringEnumConverter()
         }
     };

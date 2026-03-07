@@ -1,20 +1,36 @@
-using ClipPocketWin.Domain.Models;
-using ClipPocketWin.Shared.ResultPattern;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using ClipPocketWin.Domain.Models;
+using ClipPocketWin.Shared.ResultPattern;
 
 namespace ClipPocketWin.Infrastructure.Clipboard;
 
-public sealed partial class WindowsClipboardMonitor
+internal sealed class WindowsClipboardPayloadReader
 {
-    private static Result<IReadOnlyList<ClipboardItem>> TryReadClipboardItems(bool captureRichTextEnabled)
+    private const uint ClipboardFormatUnicodeText = 13;
+    private const uint ClipboardFormatDib = 8;
+    private const uint ClipboardFormatDibV5 = 17;
+    private const uint ClipboardFormatHDrop = 15;
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const uint DragQueryFileCount = 0xFFFFFFFF;
+    private static readonly uint HtmlClipboardFormat = WindowsClipboardNativeApi.RegisterClipboardFormat("HTML Format");
+    private static readonly uint RtfClipboardFormat = WindowsClipboardNativeApi.RegisterClipboardFormat("Rich Text Format");
+    private static readonly Regex RtfSignificantFormattingRegex = new(
+        @"\\(b(?!0\b)|i(?!0\b)|ul(?!none\b|0\b)|strike(?!0\b)|field|pict)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    public Result<IReadOnlyList<ClipboardItem>> TryReadClipboardItems(bool captureRichTextEnabled)
     {
         if (!OpenClipboardWithRetry())
         {
-            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Clipboard is currently unavailable for reading."));
+            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(
+                ErrorCode.ClipboardMonitorReadFailed,
+                "Clipboard is currently unavailable for reading."));
         }
 
         try
@@ -27,64 +43,37 @@ public sealed partial class WindowsClipboardMonitor
                 List<ClipboardItem> fileItems = new(filePaths!.Count);
                 foreach (string filePath in filePaths)
                 {
-                    fileItems.Add(new ClipboardItem
-                    {
-                        Type = ClipboardItemType.File,
-                        Timestamp = now,
-                        SourceApplicationIdentifier = sourceApplicationIdentifier,
-                        SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                        FilePath = filePath,
-                        TextContent = filePath
-                    });
+                    fileItems.Add(ClipboardItemFactory.CreateFile(
+                        now,
+                        filePath,
+                        sourceApplicationIdentifier,
+                        sourceApplicationExecutablePath));
                 }
 
                 return Result<IReadOnlyList<ClipboardItem>>.Success(fileItems);
             }
 
-            /*
             if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
             {
                 return Result<IReadOnlyList<ClipboardItem>>.Success([
-                    new ClipboardItem
-                {
-                    Type = ClipboardItemType.RichText,
-                    Timestamp = now,
-                    SourceApplicationIdentifier = sourceApplicationIdentifier,
-                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                    RichTextContent = richTextContent,
-                    TextContent = richTextContent!.PlainText
-                }
+                    ClipboardItemFactory.CreateText(
+                        ClipboardItemType.Text,
+                        now,
+                        richTextContent!.PlainText,
+                        sourceApplicationIdentifier,
+                        sourceApplicationExecutablePath,
+                        richTextContent)
                 ]);
             }
-            */
-
-            if (TryReadRichTextContent(captureRichTextEnabled, out RichTextContent? richTextContent))
-            {
-                return Result<IReadOnlyList<ClipboardItem>>.Success([
-                    new ClipboardItem
-                    {
-                        Type = ClipboardItemType.Text,
-                        Timestamp = now,
-                        SourceApplicationIdentifier = sourceApplicationIdentifier,
-                        SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                        RichTextContent = richTextContent,
-                        TextContent = richTextContent!.PlainText
-                    }
-                ]);
-            }
-
 
             if (TryReadImagePayload(out byte[]? imagePayload))
             {
                 return Result<IReadOnlyList<ClipboardItem>>.Success([
-                    new ClipboardItem
-                {
-                    Type = ClipboardItemType.Image,
-                    Timestamp = now,
-                    SourceApplicationIdentifier = sourceApplicationIdentifier,
-                    SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                    BinaryContent = imagePayload
-                }
+                    ClipboardItemFactory.CreateImage(
+                        now,
+                        imagePayload!,
+                        sourceApplicationIdentifier,
+                        sourceApplicationExecutablePath)
                 ]);
             }
 
@@ -95,41 +84,42 @@ public sealed partial class WindowsClipboardMonitor
 
             ClipboardItemType clipboardItemType = ClipboardItemClassifier.ClassifyText(textContent);
             return Result<IReadOnlyList<ClipboardItem>>.Success([
-                new ClipboardItem
-            {
-                Type = clipboardItemType,
-                Timestamp = now,
-                SourceApplicationIdentifier = sourceApplicationIdentifier,
-                SourceApplicationExecutablePath = sourceApplicationExecutablePath,
-                TextContent = textContent
-            }
+                ClipboardItemFactory.CreateText(
+                    clipboardItemType,
+                    now,
+                    textContent,
+                    sourceApplicationIdentifier,
+                    sourceApplicationExecutablePath)
             ]);
         }
         catch (Exception exception)
         {
-            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(ErrorCode.ClipboardMonitorReadFailed, "Unexpected failure while reading clipboard payload.", exception));
+            return Result<IReadOnlyList<ClipboardItem>>.Failure(new Error(
+                ErrorCode.ClipboardMonitorReadFailed,
+                "Unexpected failure while reading clipboard payload.",
+                exception));
         }
         finally
         {
-            _ = CloseClipboard();
+            _ = WindowsClipboardNativeApi.CloseClipboard();
         }
     }
 
     private static bool TryReadUnicodeText(out string? text)
     {
         text = null;
-        if (!IsClipboardFormatAvailable(ClipboardFormatUnicodeText))
+        if (!WindowsClipboardNativeApi.IsClipboardFormatAvailable(ClipboardFormatUnicodeText))
         {
             return false;
         }
 
-        IntPtr handle = GetClipboardData(ClipboardFormatUnicodeText);
+        IntPtr handle = WindowsClipboardNativeApi.GetClipboardData(ClipboardFormatUnicodeText);
         if (handle == IntPtr.Zero)
         {
             return false;
         }
 
-        IntPtr pointer = GlobalLock(handle);
+        IntPtr pointer = WindowsClipboardNativeApi.GlobalLock(handle);
         if (pointer == IntPtr.Zero)
         {
             return false;
@@ -142,7 +132,7 @@ public sealed partial class WindowsClipboardMonitor
         }
         finally
         {
-            _ = GlobalUnlock(handle);
+            _ = WindowsClipboardNativeApi.GlobalUnlock(handle);
         }
     }
 
@@ -223,7 +213,7 @@ public sealed partial class WindowsClipboardMonitor
         if (rtfData is not null)
         {
             string rtf = Encoding.ASCII.GetString(rtfData);
-            if (RtfSignificantFormattingRegex().IsMatch(rtf))
+            if (RtfSignificantFormattingRegex.IsMatch(rtf))
             {
                 return true;
             }
@@ -245,24 +235,21 @@ public sealed partial class WindowsClipboardMonitor
         return false;
     }
 
-    [GeneratedRegex(@"\\(b(?!0\b)|i(?!0\b)|ul(?!none\b|0\b)|strike(?!0\b)|field|pict)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
-    private static partial Regex RtfSignificantFormattingRegex();
-
     private static bool TryReadFilePaths(out IReadOnlyList<string>? filePaths)
     {
         filePaths = null;
-        if (!IsClipboardFormatAvailable(ClipboardFormatHDrop))
+        if (!WindowsClipboardNativeApi.IsClipboardFormatAvailable(ClipboardFormatHDrop))
         {
             return false;
         }
 
-        IntPtr handle = GetClipboardData(ClipboardFormatHDrop);
+        IntPtr handle = WindowsClipboardNativeApi.GetClipboardData(ClipboardFormatHDrop);
         if (handle == IntPtr.Zero)
         {
             return false;
         }
 
-        uint fileCount = DragQueryFile(handle, DragQueryFileCount, null, 0);
+        uint fileCount = WindowsClipboardNativeApi.DragQueryFile(handle, DragQueryFileCount, null, 0);
         if (fileCount == 0)
         {
             return false;
@@ -271,19 +258,19 @@ public sealed partial class WindowsClipboardMonitor
         List<string> paths = new((int)fileCount);
         for (uint fileIndex = 0; fileIndex < fileCount; fileIndex++)
         {
-            uint length = DragQueryFile(handle, fileIndex, null, 0);
+            uint length = WindowsClipboardNativeApi.DragQueryFile(handle, fileIndex, null, 0);
             if (length == 0)
             {
                 continue;
             }
 
             StringBuilder pathBuilder = new((int)length + 1);
-            _ = DragQueryFile(handle, fileIndex, pathBuilder, (uint)pathBuilder.Capacity);
+            _ = WindowsClipboardNativeApi.DragQueryFile(handle, fileIndex, pathBuilder, (uint)pathBuilder.Capacity);
             string path = pathBuilder.ToString();
 
             try
             {
-                if (!string.IsNullOrWhiteSpace(path) && !System.IO.Directory.Exists(path))
+                if (!string.IsNullOrWhiteSpace(path) && !Directory.Exists(path))
                 {
                     paths.Add(path);
                 }
@@ -305,24 +292,24 @@ public sealed partial class WindowsClipboardMonitor
     private static bool TryReadBytesFromFormat(uint clipboardFormat, out byte[]? data)
     {
         data = null;
-        if (!IsClipboardFormatAvailable(clipboardFormat))
+        if (!WindowsClipboardNativeApi.IsClipboardFormatAvailable(clipboardFormat))
         {
             return false;
         }
 
-        IntPtr handle = GetClipboardData(clipboardFormat);
+        IntPtr handle = WindowsClipboardNativeApi.GetClipboardData(clipboardFormat);
         if (handle == IntPtr.Zero)
         {
             return false;
         }
 
-        nuint size = GlobalSize(handle);
+        nuint size = WindowsClipboardNativeApi.GlobalSize(handle);
         if (size == 0)
         {
             return false;
         }
 
-        IntPtr pointer = GlobalLock(handle);
+        IntPtr pointer = WindowsClipboardNativeApi.GlobalLock(handle);
         if (pointer == IntPtr.Zero)
         {
             return false;
@@ -336,7 +323,7 @@ public sealed partial class WindowsClipboardMonitor
         }
         finally
         {
-            _ = GlobalUnlock(handle);
+            _ = WindowsClipboardNativeApi.GlobalUnlock(handle);
         }
     }
 
@@ -347,7 +334,7 @@ public sealed partial class WindowsClipboardMonitor
 
         for (int attempt = 0; attempt < retryCount; attempt++)
         {
-            if (OpenClipboard(IntPtr.Zero))
+            if (WindowsClipboardNativeApi.OpenClipboard(IntPtr.Zero))
             {
                 return true;
             }
@@ -360,13 +347,13 @@ public sealed partial class WindowsClipboardMonitor
 
     private static (string? ProcessIdentifier, string? ExecutablePath) TryGetForegroundProcessInfo()
     {
-        IntPtr foregroundWindow = GetForegroundWindow();
+        IntPtr foregroundWindow = WindowsClipboardNativeApi.GetForegroundWindow();
         if (foregroundWindow == IntPtr.Zero)
         {
             return (null, null);
         }
 
-        _ = GetWindowThreadProcessId(foregroundWindow, out uint processId);
+        _ = WindowsClipboardNativeApi.GetWindowThreadProcessId(foregroundWindow, out uint processId);
         if (processId == 0)
         {
             return (null, null);
@@ -385,7 +372,7 @@ public sealed partial class WindowsClipboardMonitor
 
     private static string? TryResolveProcessExecutablePath(uint processId)
     {
-        IntPtr processHandle = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        IntPtr processHandle = WindowsClipboardNativeApi.OpenProcess(ProcessQueryLimitedInformation, false, processId);
         if (processHandle == IntPtr.Zero)
         {
             return null;
@@ -395,7 +382,7 @@ public sealed partial class WindowsClipboardMonitor
         {
             StringBuilder buffer = new(1024);
             uint length = (uint)buffer.Capacity;
-            if (!QueryFullProcessImageName(processHandle, 0, buffer, ref length))
+            if (!WindowsClipboardNativeApi.QueryFullProcessImageName(processHandle, 0, buffer, ref length))
             {
                 return null;
             }
@@ -405,7 +392,7 @@ public sealed partial class WindowsClipboardMonitor
         }
         finally
         {
-            _ = CloseHandle(processHandle);
+            _ = WindowsClipboardNativeApi.CloseHandle(processHandle);
         }
     }
 }
