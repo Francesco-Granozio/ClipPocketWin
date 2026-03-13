@@ -24,8 +24,8 @@ public sealed class AdaptiveBackdropController : IDisposable
     private const int OuterRingSampleInsetPixels = 2;
     private const int VkLButton = 0x01;
     private const short KeyPressedMask = unchecked((short)0x8000);
-    private const uint GwHwndNext = 2;
     private const uint InvalidColorRef = 0xFFFFFFFF;
+    private const int DwmCompositionDelayMs = 60;
 
     private readonly Window _window;
     private readonly AppWindow _appWindow;
@@ -59,18 +59,7 @@ public sealed class AdaptiveBackdropController : IDisposable
         int CandidateWindowCount,
         int TouchedWindowCount);
 
-    private readonly struct WindowSamplingCandidate
-    {
-        public WindowSamplingCandidate(nint handle, NativeRect bounds)
-        {
-            Handle = handle;
-            Bounds = bounds;
-        }
 
-        public nint Handle { get; }
-
-        public NativeRect Bounds { get; }
-    }
 
     private struct NativeRect
     {
@@ -168,8 +157,23 @@ public sealed class AdaptiveBackdropController : IDisposable
             return;
         }
 
+        _hasBackdropSample = false;
         _ = RefreshBackdropProtectionAsync();
         TriggerDelayedReadabilityCheck(_options.PostShowReadabilityDelaySeconds);
+    }
+
+    public void ForceImmediateRefresh()
+    {
+        if (_acrylicController == null)
+        {
+            return;
+        }
+
+        _hasBackdropSample = false;
+        _wasVisibleForSampling = true;
+        _ = RefreshBackdropProtectionAsync();
+        TriggerDelayedReadabilityCheck(_options.PostShowReadabilityDelaySeconds);
+        EnsureContinuousReadabilityCheck();
     }
 
     public void Dispose()
@@ -189,6 +193,13 @@ public sealed class AdaptiveBackdropController : IDisposable
             _continuousReadabilityTimer.Tick -= ContinuousReadabilityTimer_Tick;
             _continuousReadabilityTimer.Stop();
             _continuousReadabilityTimer = null;
+        }
+
+        // Ensure WDA is always restored to WDA_NONE to prevent ghost windows
+        nint hWnd = WindowNative.GetWindowHandle(_window);
+        if (hWnd != nint.Zero)
+        {
+            _ = SetWindowDisplayAffinity(hWnd, 0);
         }
 
         _acrylicController?.Dispose();
@@ -306,18 +317,36 @@ public sealed class AdaptiveBackdropController : IDisposable
             _isBackdropSampling = true;
             try
             {
-                (measuredLuminance, diagnostics) = await System.Threading.Tasks.Task.Run(() =>
-                {
-                    if (TryMeasureBackdropLuminance(windowHandle, left, top, width, height, out double sampledLuminance, out BackdropSamplingDiagnostics sampledDiagnostics))
-                    {
-                        return (sampledLuminance, sampledDiagnostics);
-                    }
+                // UI THREAD: Safely apply window capture exclusion before background capture
+                _ = SetWindowDisplayAffinity(windowHandle, 0x11); // WDA_EXCLUDEFROMCAPTURE
 
-                    return (_options.LuminanceFallbackValue, new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0));
-                });
+                // UI THREAD: Give DWM time to recompose asynchronously to not block UI
+                await System.Threading.Tasks.Task.Delay(DwmCompositionDelayMs);
+
+                // Check again in case window was closed or hidden during the delay
+                if (IsWindowVisibleForSampling())
+                {
+                    // BACKGROUND THREAD: perform pixel sampling with GDI
+                    (measuredLuminance, diagnostics) = await System.Threading.Tasks.Task.Run(() =>
+                    {
+                        if (TryMeasureBackdropLuminance(windowHandle, left, top, width, height, out double sampledLuminance, out BackdropSamplingDiagnostics sampledDiagnostics))
+                        {
+                            return (sampledLuminance, sampledDiagnostics);
+                        }
+
+                        return (_options.LuminanceFallbackValue, new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0));
+                    });
+                }
+                else
+                {
+                    measuredLuminance = _options.LuminanceFallbackValue;
+                    diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.Fallback, 0, 0, 0);
+                }
             }
             finally
             {
+                // UI THREAD: Restore normal window capture properties
+                _ = SetWindowDisplayAffinity(windowHandle, 0); // WDA_NONE
                 _isBackdropSampling = false;
             }
         }
@@ -463,7 +492,7 @@ public sealed class AdaptiveBackdropController : IDisposable
             return false;
         }
 
-        if (TryMeasureUnderWindowLuminance(windowHandle, left, top, width, height, out double underWindowLuminance, out int underWindowSamples, out int candidateWindowCount, out int touchedWindowCount))
+        if (TryMeasureUnderWindowLuminance(left, top, width, height, out double underWindowLuminance, out int underWindowSamples, out int candidateWindowCount, out int touchedWindowCount))
         {
             luminance = underWindowLuminance;
             diagnostics = new BackdropSamplingDiagnostics(BackdropSampleSource.UnderWindow, underWindowSamples, candidateWindowCount, touchedWindowCount);
@@ -481,7 +510,6 @@ public sealed class AdaptiveBackdropController : IDisposable
     }
 
     private static bool TryMeasureUnderWindowLuminance(
-        nint windowHandle,
         int left,
         int top,
         int width,
@@ -493,25 +521,22 @@ public sealed class AdaptiveBackdropController : IDisposable
     {
         luminance = 0d;
         validSampleCount = 0;
-        candidateWindowCount = 0;
-        touchedWindowCount = 0;
+        candidateWindowCount = 1;
+        touchedWindowCount = 1;
 
-        if (!TryBuildUnderWindowCandidates(windowHandle, out List<WindowSamplingCandidate> candidates))
+        if (width <= 0 || height <= 0)
         {
             return false;
         }
 
-        candidateWindowCount = candidates.Count;
-        if (candidateWindowCount == 0)
+        nint desktopDc = GetDC(nint.Zero);
+        if (desktopDc == nint.Zero)
         {
             return false;
         }
 
         Span<double> chunkLuminances = stackalloc double[SamplingGridRows * SamplingGridCols];
         int validChunkCount = 0;
-
-        Dictionary<nint, IntPtr> windowDcs = new(candidates.Count);
-        HashSet<nint> touchedWindows = [];
 
         try
         {
@@ -532,15 +557,15 @@ public sealed class AdaptiveBackdropController : IDisposable
                             int sampleX = left + (int)(width * normalizedX);
                             int sampleY = top + (int)(height * normalizedY);
 
-                            if (!TrySampleLuminanceFromUnderlyingWindow(candidates, windowDcs, sampleX, sampleY, out double sampleLuminance, out nint sampledWindowHandle))
+                            uint colorRef = GetPixel(desktopDc, sampleX, sampleY);
+                            if (colorRef == InvalidColorRef)
                             {
                                 continue;
                             }
 
-                            chunkTotal += sampleLuminance;
+                            chunkTotal += ColorRefToLuminance(colorRef);
                             chunkSampleCount++;
                             validSampleCount++;
-                            _ = touchedWindows.Add(sampledWindowHandle);
                         }
                     }
 
@@ -555,13 +580,7 @@ public sealed class AdaptiveBackdropController : IDisposable
         }
         finally
         {
-            foreach (KeyValuePair<nint, IntPtr> pair in windowDcs)
-            {
-                if (pair.Value != IntPtr.Zero)
-                {
-                    _ = ReleaseDC(pair.Key, pair.Value);
-                }
-            }
+            _ = ReleaseDC(nint.Zero, desktopDc);
         }
 
         if (validChunkCount == 0)
@@ -570,87 +589,7 @@ public sealed class AdaptiveBackdropController : IDisposable
         }
 
         luminance = ComputeRobustChunkLuminance(chunkLuminances[..validChunkCount]);
-        touchedWindowCount = touchedWindows.Count;
         return true;
-    }
-
-    private static bool TryBuildUnderWindowCandidates(nint windowHandle, out List<WindowSamplingCandidate> candidates)
-    {
-        candidates = [];
-
-        if (!IsWindow(windowHandle))
-        {
-            return false;
-        }
-
-        nint current = GetWindow(windowHandle, GwHwndNext);
-        int safetyCounter = 0;
-
-        while (current != nint.Zero && safetyCounter < 1024)
-        {
-            safetyCounter++;
-
-            if (current != windowHandle
-                && IsWindow(current)
-                && IsWindowVisible(current)
-                && !IsIconic(current)
-                && GetWindowRect(current, out NativeRect bounds)
-                && bounds.Right > bounds.Left
-                && bounds.Bottom > bounds.Top)
-            {
-                candidates.Add(new WindowSamplingCandidate(current, bounds));
-            }
-
-            current = GetWindow(current, GwHwndNext);
-        }
-
-        return candidates.Count > 0;
-    }
-
-    private static bool TrySampleLuminanceFromUnderlyingWindow(
-        List<WindowSamplingCandidate> candidates,
-        Dictionary<nint, IntPtr> windowDcs,
-        int screenX,
-        int screenY,
-        out double luminance,
-        out nint sampledWindowHandle)
-    {
-        luminance = 0d;
-        sampledWindowHandle = nint.Zero;
-
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            WindowSamplingCandidate candidate = candidates[i];
-            if (!IsPointInsideRect(candidate.Bounds, screenX, screenY))
-            {
-                continue;
-            }
-
-            if (!windowDcs.TryGetValue(candidate.Handle, out nint targetDc))
-            {
-                targetDc = GetWindowDC(candidate.Handle);
-                windowDcs[candidate.Handle] = targetDc;
-            }
-
-            if (targetDc == nint.Zero)
-            {
-                continue;
-            }
-
-            int localX = screenX - candidate.Bounds.Left;
-            int localY = screenY - candidate.Bounds.Top;
-            uint colorRef = GetPixel(targetDc, localX, localY);
-            if (colorRef == InvalidColorRef)
-            {
-                continue;
-            }
-
-            sampledWindowHandle = candidate.Handle;
-            luminance = ColorRefToLuminance(colorRef);
-            return true;
-        }
-
-        return false;
     }
 
     private static bool TryMeasureOuterRingLuminance(int left, int top, int width, int height, out double luminance, out int validSampleCount)
@@ -716,10 +655,7 @@ public sealed class AdaptiveBackdropController : IDisposable
         sampleCount++;
     }
 
-    private static bool IsPointInsideRect(NativeRect rect, int x, int y)
-    {
-        return x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom;
-    }
+
 
     private static double ComputeRobustChunkLuminance(ReadOnlySpan<double> chunkLuminances)
     {
@@ -793,25 +729,13 @@ public sealed class AdaptiveBackdropController : IDisposable
     }
 
     [DllImport("user32.dll")]
+    private static extern uint SetWindowDisplayAffinity(nint hwnd, uint dwAffinity);
+
+    [DllImport("user32.dll")]
     private static extern nint GetDC(nint hWnd);
 
     [DllImport("user32.dll")]
-    private static extern nint GetWindowDC(nint hWnd);
-
-    [DllImport("user32.dll")]
     private static extern int ReleaseDC(nint hWnd, nint hDc);
-
-    [DllImport("user32.dll")]
-    private static extern nint GetWindow(nint hWnd, uint uCmd);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetWindowRect(nint hWnd, out NativeRect lpRect);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindow(nint hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsIconic(nint hWnd);
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);

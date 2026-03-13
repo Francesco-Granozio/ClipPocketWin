@@ -142,6 +142,11 @@ public sealed class WindowPanelService : IWindowPanelService
 #endif
                 }
             }
+            else
+            {
+                // Prevent DWM ghost window artifacts by clearing capture exclusion before hiding
+                _ = SetWindowDisplayAffinity(_windowHandle, 0); // WDA_NONE
+            }
 
             bool commandResult = ShowWindow(_windowHandle, visible ? ShowCommand : HideCommand);
             if (visible)
@@ -268,6 +273,9 @@ public sealed class WindowPanelService : IWindowPanelService
         ActiveMonitorBottomCenter,
         PointerCentered
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint SetWindowDisplayAffinity(nint hwnd, uint dwAffinity);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(nint hWnd, int nCmdShow);

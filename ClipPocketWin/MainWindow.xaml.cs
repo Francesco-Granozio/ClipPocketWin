@@ -568,6 +568,11 @@ namespace ClipPocketWin
         private void Window_Activated(object sender, WindowActivatedEventArgs args)
         {
             _adaptiveBackdropController?.HandleWindowActivated(args);
+
+            if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
+                _adaptiveBackdropController?.ForceImmediateRefresh();
+            }
         }
 
         private void Card_PointerEntered(object sender, PointerRoutedEventArgs e)
